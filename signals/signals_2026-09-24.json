@@ -1,0 +1,180 @@
+{
+  "scan_date": "2026-09-24",
+  "timestamp": "2026-09-24T11:44:00.271100",
+  "nifty": {
+    "close": 23446.8,
+    "sma_20": 23658.05,
+    "regime": "BEARISH",
+    "change_from_prev": 117.8,
+    "change_pct": 0.5
+  },
+  "signals": [],
+  "signal_count": 0,
+  "watchlist_status": [
+    {
+      "stock": "RELIANCE",
+      "close": 1248.0,
+      "rsi": 31.8,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -2.1,
+      "low_20d": 1226.4,
+      "volume": 8.4
+    },
+    {
+      "stock": "HDFCBANK",
+      "close": 737.25,
+      "rsi": 66.9,
+      "status": "no signal",
+      "details": "",
+      "bb_position": 3.1,
+      "low_20d": 681.9,
+      "volume": 23.2
+    },
+    {
+      "stock": "ICICIBANK",
+      "close": 1340.0,
+      "rsi": 17.2,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -3.8,
+      "low_20d": 1333.8,
+      "volume": 4.8
+    },
+    {
+      "stock": "SBIN",
+      "close": 994.1,
+      "rsi": 39.7,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -1.8,
+      "low_20d": 968.0,
+      "volume": 4.5
+    },
+    {
+      "stock": "BHARTIARTL",
+      "close": 1833.2,
+      "rsi": 44.6,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -0.9,
+      "low_20d": 1811.9,
+      "volume": 3.7
+    },
+    {
+      "stock": "KOTAKBANK",
+      "close": 413.25,
+      "rsi": 38.9,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -1.2,
+      "low_20d": 398.15,
+      "volume": 8.6
+    },
+    {
+      "stock": "LT",
+      "close": 3929.9,
+      "rsi": 45.0,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -0.4,
+      "low_20d": 3799.9,
+      "volume": 0.9
+    },
+    {
+      "stock": "MARUTI",
+      "close": 12230,
+      "rsi": 27.3,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -3.6,
+      "low_20d": 12103.0,
+      "volume": 0.2
+    },
+    {
+      "stock": "NTPC",
+      "close": 326.0,
+      "rsi": 43.5,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -1.2,
+      "low_20d": 321.0,
+      "volume": 10.5
+    },
+    {
+      "stock": "WIPRO",
+      "close": 164.9,
+      "rsi": 25.3,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -4.1,
+      "low_20d": 163.21,
+      "volume": 10.9
+    },
+    {
+      "stock": "TATASTEEL",
+      "close": 190.82,
+      "rsi": 59.5,
+      "status": "no signal",
+      "details": "",
+      "bb_position": 2.8,
+      "low_20d": 180.28,
+      "volume": 39.8
+    },
+    {
+      "stock": "TITAN",
+      "close": 4880.0,
+      "rsi": 34.5,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -2.2,
+      "low_20d": 4772.0,
+      "volume": 0.8
+    },
+    {
+      "stock": "HCLTECH",
+      "close": 1256.7,
+      "rsi": 34.7,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -1.5,
+      "low_20d": 1195.7,
+      "volume": 2.7
+    },
+    {
+      "stock": "INFY",
+      "close": 1020.5,
+      "rsi": 20.6,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -5.9,
+      "low_20d": 1019.2,
+      "volume": 5.1
+    },
+    {
+      "stock": "TCS",
+      "close": 2089.6,
+      "rsi": 18.4,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -6.7,
+      "low_20d": 2075.3,
+      "volume": 2.2
+    },
+    {
+      "stock": "ASIANPAINT",
+      "close": 2455.0,
+      "rsi": 32.8,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -1.8,
+      "low_20d": 2397.4,
+      "volume": 0.4
+    }
+  ],
+  "strategies_checked": [
+    "BB Mid Reclaim (Long)",
+    "20D Low Breakdown (Short)"
+  ],
+  "disclaimer": "Signals are for informational purposes only. Always confirm on your trading platform before executing. Past performance does not guarantee future results."
+}

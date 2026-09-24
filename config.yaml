@@ -1,0 +1,102 @@
+# Stock Analyzer — Trading Signal System
+# A system to scan Indian stocks for trading signals and output clear buy/sell recommendations.
+
+project_name: "Stock Analyzer"
+version: "0.1.0"
+
+# ─── Data ──────────────────────────────────────────────────────
+data:
+  # Source for live and historical NSE data (free, no API key)
+  provider: "jugaad-data"
+  
+  # How many days of historical data to keep per stock
+  history_days: 200
+
+# ─── Watchlist ─────────────────────────────────────────────────
+watchlist:
+  # Focus list — high liquidity Nifty 50 stocks
+  # Start with a focused list, expand later
+  stocks:
+    - RELIANCE
+    - HDFCBANK
+    - ICICIBANK
+    - SBIN
+    - BHARTIARTL
+    - KOTAKBANK
+    - LT
+    - MARUTI
+    - NTPC
+    - WIPRO
+    - TATASTEEL
+    - TITAN
+    - HCLTECH
+    - INFY
+    - TCS
+    - ASIANPAINT
+
+# ─── Strategies ────────────────────────────────────────────────
+strategies:
+  # Strategy 1: BB Mid Reclaim (Long only, when Nifty bullish)
+  bb_reclaim_long:
+    name: "BB Mid Reclaim (Long)"
+    description: "Close crosses above 20 SMA (BB middle) after testing below it. Nifty must be above 20 SMA."
+    enabled: true
+    direction: "LONG"
+    entry_rules:
+      - condition: "close > bb_mid * 1.003"
+        description: "Today's close crosses above BB middle by at least 0.3%"
+      - condition: "prev_close <= prev_bb_mid"
+        description: "Yesterday's close was at or below BB middle"
+      - condition: "sma_20 > 0"
+        description: "Basic trend filter: 20 SMA exists"
+      - condition: "nifty_above_sma20"
+        description: "Nifty 50 must be above its 20 SMA (bullish regime)"
+    exit_rules:
+      - condition: "rsi_14 > 55"
+        description: "Exit when RSI crosses above 55"
+    stop_loss:
+      type: "dynamic"
+      method: "max(1.5x ATR, 2.5% below entry)"
+      fixed_pct: 0.035
+
+  # Strategy 2: 20-Day Low Breakdown (Short only, when Nifty bearish)
+  breakdown_short:
+    name: "20-Day Low Breakdown (Short)"
+    description: "Close breaks below lowest low of past 20 days. Nifty must be below 20 SMA."
+    enabled: true
+    direction: "SHORT"
+    entry_rules:
+      - condition: "close < low_20d_prev"
+        description: "Today's close breaks below 20-day low"
+      - condition: "prev_close >= prev_low_20d"
+        description: "Yesterday's close was at or above 20-day low (fresh break)"
+      - condition: "nifty_below_sma20"
+        description: "Nifty 50 must be below its 20 SMA (bearish regime)"
+    exit_rules:
+      - condition: "rsi_14 < 45"
+        description: "Exit when RSI crosses below 45"
+    stop_loss:
+      type: "fixed_pct"
+      pct: 0.035
+
+# ─── Risk ──────────────────────────────────────────────────────
+risk:
+  # These are templates — we'll refine during paper trading
+  risk_per_trade_pct: 0.015       # 1.5% of trading capital per trade
+  max_open_positions: 5
+  max_daily_loss_pct: 0.05        # Stop trading if lose 5% in a day
+  max_weekly_loss_pct: 0.10       # Pause if lose 10% in a week
+
+# ─── Output ────────────────────────────────────────────────────
+output:
+  # Where to write signal files
+  directory: "signals"
+  # File naming: signals_YYYYMMDD.json
+  format: "json"
+
+# ─── Schedule ──────────────────────────────────────────────────
+schedule:
+  # Daily scan after market close (IST 3:30 PM = ~10:00 UTC)
+  daily_scan_time_utc: "10:00"
+  # Optional intraday checks (IST 9:30, 10:30, 11:00 AM = 4:00, 5:00, 5:30 UTC)
+  intraday_check_times_utc: ["04:00", "05:00", "05:30"]
