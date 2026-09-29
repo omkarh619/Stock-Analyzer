@@ -43,28 +43,43 @@ strategies:
     enabled: true
     direction: "LONG"
     entry_rules:
-      - condition: "close > bb_mid * 1.003"
-        description: "Today's close crosses above BB middle by at least 0.3%"
+      - condition: "close > bb_mid * 1.005"
+        description: "Today's close crosses above BB middle by at least 0.5%"
       - condition: "prev_close <= prev_bb_mid"
         description: "Yesterday's close was at or below BB middle"
-      - condition: "sma_20 > 0"
-        description: "Basic trend filter: 20 SMA exists"
       - condition: "nifty_above_sma20"
         description: "Nifty 50 must be above its 20 SMA (bullish regime)"
     exit_rules:
-      - condition: "rsi_14 > 55"
-        description: "Exit when RSI crosses above 55"
+      - condition: "rsi_14 > 70"
+        description: "Exit when RSI crosses above 70 (overbought)"
+      - condition: "rsi_14 < 50"
+        description: "Exit when RSI crosses back below 50 (momentum reversed)"
+      - condition: "close < bb_mid"
+        description: "Exit immediately if price closes back below BB middle"
     stop_loss:
       type: "dynamic"
-      method: "max(1.5x ATR, 2.5% below entry)"
+      method: "max(1.5x ATR, 3.5% below entry)"
       fixed_pct: 0.035
 
+    # ── Intraday LONG variant (BB Mid Reclaim, for bullish regime) ──
+    intraday_long:
+      enabled: true
+      description: "Intraday LONG when price crosses above BB middle with strong filters"
+      rsi_min: 40
+      rsi_max: 65
+      gap_min_pct: 0.5
+      cross_min_pct: 0.3
+      nifty_confirmation: true
+      target_pct: 2.5
+      sl_pct: 3.5
+
   # Strategy 2: 20-Day Low Breakdown (Short only, when Nifty bearish)
-  breakdown_short:
+  breakdown_20d_low:
     name: "20-Day Low Breakdown (Short)"
     description: "Close breaks below lowest low of past 20 days. Nifty must be below 20 SMA."
     enabled: true
     direction: "SHORT"
+    # ── Daily (EOD) entry rules ──
     entry_rules:
       - condition: "close < low_20d_prev"
         description: "Today's close breaks below 20-day low"
@@ -73,14 +88,58 @@ strategies:
       - condition: "nifty_below_sma20"
         description: "Nifty 50 must be below its 20 SMA (bearish regime)"
     exit_rules:
-      - condition: "rsi_14 < 45"
-        description: "Exit when RSI crosses below 45"
+      - condition: "rsi_14 < 30"
+        description: "Exit when RSI crosses below 30 (oversold — take profits)"
+      - condition: "rsi_14 > 50"
+        description: "Exit when RSI crosses back above 50 (momentum reversed)"
+      - condition: "close > low_20d_prev"
+        description: "Exit if price closes back above the 20-day low it broke"
     stop_loss:
       type: "fixed_pct"
       pct: 0.035
 
+    # ── Intraday variant (tighter, stronger filters) ──
+    intraday:
+      enabled: true
+      description: "Intraday SHORT when intraday low breaks 20D low with strong filters"
+      # TIGHTENED FILTERS (Path A — keep 2.5% target, improve signal quality)
+      # Filter 1: RSI range — avoid deeply oversold (<30, bounce risk) and not falling enough (>42)
+      rsi_min: 30
+      rsi_max: 42
+      # Filter 2: Gap down at open — stock must be down ≥1.0% from prev close (bearish momentum)
+      gap_min_pct: 1.0
+      # Filter 3: Breakdown depth — intraday low must be ≥0.6% below 20D low (real break, not just touching)
+      breakdown_min_pct: 0.6
+      # Filter 4: Nifty confirmation — only trigger if Nifty regime is bearish
+      nifty_confirmation: true
+      # Filter 5: Time cutoff — don't trigger new signals after this time
+      time_cutoff: "12:00"
+      # Target and SL (Path A — keep 2.5% target)
+      target_pct: 2.5
+      sl_pct: 3.5
+
+# ─── Time cutoff for intraday signals ───────────────────────────
+# Signals after this time are NOT RECOMMENDED for trading
+# Format: "HH:MM" in 24-hour format (e.g., "12:00" = noon)
+# Set to null to disable
+time:
+  intraday_cutoff: "12:00"  # Don't recommend new trades after 12:00 PM
+# Zerodha intraday (MIS) charges — approximate, verify with broker
+charges:
+  broker: "Zerodha"
+  account_type: "intraday_MIS"
+  brokerage_per_order: 20        # ₹20 flat per order (buy + sell = ₹40 round trip)
+  gst_rate: 0.18                 # 18% GST on brokerage
+  stt_sell_pct: 0.001            # 0.1% STT on sell side only (intraday)
+  exchange_transaction_pct: 0.0000375  # ~0.00375% NSE + BSE per side
+  sebi_fee_per_cr: 10            # ₹10 per crore traded
+  stamp_duty_buy_pct: 0.00015    # 0.015% Maharashtra stamp duty on buy side
+  # The script will compute total per-trade cost and show it with signals
+
 # ─── Risk ──────────────────────────────────────────────────────
 risk:
+  # Trading capital for quantity estimation
+  capital: 10000              # ₹10,000 (adjust to your actual capital)
   # These are templates — we'll refine during paper trading
   risk_per_trade_pct: 0.015       # 1.5% of trading capital per trade
   max_open_positions: 5

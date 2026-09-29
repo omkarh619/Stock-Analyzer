@@ -9,7 +9,7 @@ import os
 import sys
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time
 from pathlib import Path
 
 import pandas as pd
@@ -47,6 +47,80 @@ def load_config():
         sys.exit(1)
     with open(CONFIG_FILE, "r") as f:
         return yaml.safe_load(f)
+
+def load_charges():
+    """Load charges config from config.yaml. Returns dict with default values if missing."""
+    cfg = load_config()
+    charges = cfg.get('charges', {})
+    return {
+        'brokerage_per_order': charges.get('brokerage_per_order', 20),
+        'gst_rate': charges.get('gst_rate', 0.18),
+        'stt_sell_pct': charges.get('stt_sell_pct', 0.001),
+        'exchange_transaction_pct': charges.get('exchange_transaction_pct', 0.0000375),
+        'sebi_fee_per_cr': charges.get('sebi_fee_per_cr', 10),
+        'stamp_duty_buy_pct': charges.get('stamp_duty_buy_pct', 0.00015),
+    }
+
+# Cache config and charges at module level (loaded once)
+_config = None
+_charges = None
+
+def get_config():
+    """Return cached config, loading if needed."""
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
+
+def get_charges():
+    """Return cached charges dict, loading if needed."""
+    global _charges
+    if _charges is None:
+        _charges = load_charges()
+    return _charges
+
+def get_capital():
+    """Return trading capital from config (default Rs.10,000)."""
+    cfg = get_config()
+    return cfg.get("risk", {}).get("capital", 10000)
+
+def calculate_charges(side, trade_value, quantity):
+    """Calculate total per-trade charges and return (total, breakdown_dict)."""
+    charges_cfg = get_charges()
+    quantity = max(quantity, 1)
+    brokerage = charges_cfg["brokerage_per_order"] * 2  # buy + sell
+    gst = brokerage * charges_cfg["gst_rate"]
+    stt = trade_value * charges_cfg["stt_sell_pct"]
+    exchange = trade_value * charges_cfg["exchange_transaction_pct"] * 2
+    sebi = trade_value * (charges_cfg["sebi_fee_per_cr"] / 1e8)
+    stamp_duty = trade_value * charges_cfg["stamp_duty_buy_pct"]
+    total = brokerage + gst + stt + exchange + sebi + stamp_duty
+    breakdown = {
+        "brokerage": round(brokerage, 2),
+        "gst": round(gst, 2),
+        "stt": round(stt, 2),
+        "exchange": round(exchange, 2),
+        "sebi": round(sebi, 2),
+        "stamp_duty": round(stamp_duty, 2),
+    }
+    return round(total, 2), breakdown
+
+def get_intraday_cutoff():
+    """Return cutoff time as datetime.time, or None if disabled."""
+    cfg = get_config()
+    cutoff_str = cfg.get('time', {}).get('intraday_cutoff', None)
+    if not cutoff_str:
+        return None
+    parts = cutoff_str.split(':')
+    return time(int(int(parts[0])), int(int(parts[1])))
+
+def is_too_late_for_trading():
+    """Return True if current time is past the intraday cutoff."""
+    cutoff = get_intraday_cutoff()
+    if cutoff is None:
+        return False
+    now = datetime.now().time()
+    return now > cutoff
 
 # ─── Data fetching ─────────────────────────────────────────────
 def fetch_nifty_data(hist, days=200, end_date=None):
@@ -157,11 +231,19 @@ def check_bb_reclaim_long(df, nifty_row, prev_nifty_row):
     if not bb_reclaim:
         return None
     
-    # Compute trade parameters
+    # ─── Compute trade parameters ─────────────────────────────────
     close_price = round(last['close'], 2)
     sl_price = round(close_price * 0.965, 2)  # 3.5% SL
+    target_price = round(close_price * 1.02, 2)  # 2% target (profitable direction)
     sl_pct = round((close_price - sl_price) / close_price * 100, 2)
-    
+    target_pct = round((target_price - close_price) / close_price * 100, 2)
+
+    # ─── Compute charges ────────────────────────────────────────
+    cfg = get_charges()
+    est_qty = max(10, min(200, int(get_capital() / close_price * 0.4)))
+    trade_value = close_price * est_qty
+    total_ch, breakdown_ch = calculate_charges('BUY', trade_value, est_qty)
+
     return {
         'type': 'LONG',
         'strategy': 'BB Mid Reclaim',
@@ -181,6 +263,19 @@ def check_bb_reclaim_long(df, nifty_row, prev_nifty_row):
         'nifty_sma20': round(nifty_row['sma_20'], 2),
         'nifty_regime': 'BULLISH' if nifty_bull else 'BEARISH',
         'rationale': f"Close {close_price} reclaimed BB middle {round(last['bb_mid'],2)} by +{round((last['close']/last['bb_mid']-1)*100,2)}% after testing below. RSI at {round(last['rsi_14'],1)}. Nifty bullish ({round(nifty_row['close'],0)} vs 20DMA {round(nifty_row['sma_20'],0)}).",
+        # Target (take-profit) — 2% move in profitable direction
+        'target_price': target_price,
+        'target_pct': target_pct,
+        # Charges awareness (computed above)
+        'charges': {
+            'broker': 'Zerodha (intraday MIS)',
+            'estimated_total': round(total_ch, 2),
+            'breakdown': breakdown_ch,
+            'break_even_price': round(close_price + total_ch / est_qty, 2) if est_qty > 0 else 0,
+            'min_profit_for_value': round(est_qty * 0.005, 2) if est_qty > 0 else 0,
+            'estimated_quantity': est_qty,
+            'estimated_trade_value': round(trade_value, 2),
+        },
         # Beginner-friendly instructions
         'beginner_instruction': f"This looks like a BUY setup. {df.attrs.get('symbol', 'UNKNOWN')} price went above its 20-day average of Rs.{round(last['bb_mid'],2):,.2f}. If you want to act on this:",
         'beginner_entry': f"  1. On Kite: Search '{df.attrs.get('symbol', 'UNKNOWN')}' → Click BUY → Select Product: MIS (Intraday) → Enter price: Rs.{close_price:,.2f} (market) or Rs.{round(close_price*0.98,2):,.2f} (limit) → Quantity: decide based on your capital → Place order",
@@ -214,8 +309,16 @@ def check_breakdown_short(df, nifty_row):
     
     close_price = round(last['close'], 2)
     sl_price = round(close_price * 1.035, 2)  # 3.5% SL
+    target_price = round(close_price * 0.98, 2)  # 2% target (profitable direction for SHORT)
     sl_pct = round((sl_price - close_price) / close_price * 100, 2)
-    
+    target_pct = round((close_price - target_price) / close_price * 100, 2)
+
+    # ─── Compute charges ────────────────────────────────────────
+    cfg = get_charges()
+    est_qty = max(10, min(200, int(get_capital() / close_price * 0.4)))
+    trade_value = close_price * est_qty
+    total_ch, breakdown_ch = calculate_charges('SELL', trade_value, est_qty)
+
     return {
         'type': 'SHORT',
         'strategy': '20D Low Breakdown',
@@ -234,7 +337,20 @@ def check_breakdown_short(df, nifty_row):
         'nifty_close': round(nifty_row['close'], 2),
         'nifty_sma20': round(nifty_row['sma_20'], 2),
         'nifty_regime': 'BEARISH' if nifty_bear else 'BULLISH',
-        'rationale': f"Close {close_price} broke below 20-day low {round(last['low_20d_prev'],2)} (distance: -{round((last['low_20d_prev']-last['close'])/last['low_20d_prev']*100,2)}%). RSI at {round(last['rsi_14'],1)}. Nifty bearish ({round(nifty_row['close'],0)} vs 20DMA {round(nifty_row['sma_20'],0)})."
+        'rationale': f"Close {close_price} broke below 20-day low {round(last['low_20d_prev'],2)} (distance: -{round((last['low_20d_prev']-last['close'])/last['low_20d_prev']*100,2)}%). RSI at {round(last['rsi_14'],1)}. Nifty bearish ({round(nifty_row['close'],0)} vs 20DMA {round(nifty_row['sma_20'],0)}).",
+        # Target (take-profit) — 2% move in profitable direction
+        'target_price': target_price,
+        'target_pct': target_pct,
+        # Charges awareness (computed above)
+        'charges': {
+            'broker': 'Zerodha (intraday MIS)',
+            'estimated_total': round(total_ch, 2),
+            'breakdown': breakdown_ch,
+            'break_even_price': round(close_price - total_ch / est_qty, 2) if est_qty > 0 else 0,
+            'min_profit_for_value': round(est_qty * 0.005, 2) if est_qty > 0 else 0,
+            'estimated_quantity': est_qty,
+            'estimated_trade_value': round(trade_value, 2),
+        }
     }
 
 def _serialize(obj):
@@ -426,7 +542,37 @@ def run_daily_scan(target_date=None):
                 print(f"  20-Day Low: Rs.{sig['low_20d']} (distance: -{sig['distance_from_low']}%)")
                 print(f"  Volume: {sig['volume']}M (ratio: {sig['volume_ratio']}x)")
             print(f"  Exit: When RSI crosses {'above 55' if sig['type']=='LONG' else 'below 45'}")
+            # ─── Take-profit target ───────────────────────────────────────
+            if sig.get('target_price') and sig.get('target_pct'):
+                tp = sig['target_price']
+                tpp = sig['target_pct']
+                direction = "rise" if sig['type'] == 'LONG' else "drop"
+                print(f"  🎯 Target (take-profit): Rs.{tp} ({tpp:+.1f}% {direction})")
+                print(f"     Exit here if reached — don't get greedy, take the profit.")
+                print()
             print(f"  Rationale: {sig['rationale']}")
+            # ─── Charges awareness ────────────────────────────────────────
+            if sig.get('charges'):
+                c = sig['charges']
+                print(f"  Charges (Zerodha intraday MIS, estimated):")
+                print(f"    Brokerage (2× ₹20):     Rs.{c['breakdown'].get('brokerage', 0):,.2f}")
+                print(f"    STT (sell side, 0.1%):  Rs.{c['breakdown'].get('stt', 0):,.2f}")
+                ex_sebi = c['breakdown'].get('exchange', 0) + c['breakdown'].get('sebi', 0)
+                print(f"    Exchange & SEBI fees:   Rs.{ex_sebi:,.2f}")
+                print(f"    Stamp duty (buy side):  Rs.{c['breakdown'].get('stamp_duty', 0):,.2f}")
+                gst = c['breakdown'].get('gst', 0)
+                print(f"    GST on brokerage (18%): Rs.{gst:,.2f}")
+                total = c.get('estimated_total', 0)
+                print(f"    ─────────────────────────────────────")
+                print(f"    Total estimated:        Rs.{total:,.2f}")
+                be = c.get('break_even_price', 0)
+                be_text = f"Rs.{be:,.2f}" if be > 0 else "N/A"
+                print(f"    Break-even price:       {be_text}")
+                mp = c.get('min_profit_for_value', 0)
+                mp_text = f"Rs.{mp:,.2f}" if mp > 0 else "N/A"
+                print(f"    Min profit for value:   {mp_text}")
+                print()
+
     else:
         print("\n  No signals for this date.")
         print()

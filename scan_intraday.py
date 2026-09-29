@@ -8,7 +8,7 @@ Trigger it when you want to monitor. Press Ctrl+C to stop.
 import os
 import sys
 import json
-import time
+import time as _time_module
 import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -35,6 +35,69 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# ─── Charges config ──────────────────────────────────────
+def load_charges():
+    """Load charges config from config.yaml."""
+    cfg = load_config()
+    charges_cfg = cfg.get("charges", {})
+    return {
+        "brokerage_per_order": charges_cfg.get("brokerage_per_order", 20),
+        "gst_rate": charges_cfg.get("gst_rate", 0.18),
+        "stt_sell_pct": charges_cfg.get("stt_sell_pct", 0.001),
+        "exchange_transaction_pct": charges_cfg.get("exchange_transaction_pct", 0.0000375),
+        "sebi_fee_per_cr": charges_cfg.get("sebi_fee_per_cr", 10),
+        "stamp_duty_buy_pct": charges_cfg.get("stamp_duty_buy_pct", 0.00015),
+        "broker_name": charges_cfg.get("broker", "Zerodha"),
+    }
+
+_charges_cache = None
+
+def get_charges():
+    """Return cached charges dict."""
+    global _charges_cache
+    if _charges_cache is None:
+        _charges_cache = load_charges()
+    return _charges_cache
+
+def get_capital():
+    """Return trading capital from config (default Rs.10,000)."""
+    cfg = load_config()
+    return cfg.get("risk", {}).get("capital", 10000)
+
+def calculate_charges(side, trade_value, quantity):
+    """Calculate total per-trade charges and return (total, breakdown_dict)."""
+    charges_cfg = get_charges()
+    quantity = max(quantity, 1)  # avoid division by zero
+    
+    brokerage = charges_cfg["brokerage_per_order"] * 2  # buy + sell
+    gst = brokerage * charges_cfg["gst_rate"]
+    stt = trade_value * charges_cfg["stt_sell_pct"]
+    exchange = trade_value * charges_cfg["exchange_transaction_pct"] * 2
+    sebi = trade_value * (charges_cfg["sebi_fee_per_cr"] / 1e8)
+    stamp_duty = trade_value * charges_cfg["stamp_duty_buy_pct"]
+    
+    total = brokerage + gst + stt + exchange + sebi + stamp_duty
+    
+    breakdown = {
+        "brokerage": round(brokerage, 2),
+        "gst": round(gst, 2),
+        "stt": round(stt, 2),
+        "exchange": round(exchange, 2),
+        "sebi": round(sebi, 2),
+        "stamp_duty": round(stamp_duty, 2),
+    }
+    return round(total, 2), breakdown
+
+def estimate_quantity(market_price, direction, capital_size=None):
+    """Suggest a trade quantity based on typical capital sizes and price."""
+    if capital_size is None:
+        capital_size = get_capital()  # read from config (default ₹10,000)
+    if direction == "LONG":
+        return max(10, min(200, int(capital_size / market_price * 0.4)))
+    else:
+        return max(10, min(200, int(capital_size / market_price * 0.4)))
+
 def load_config():
     import yaml
     with open(CONFIG_FILE, "r") as f:
@@ -43,6 +106,23 @@ def load_config():
 config = load_config()
 WATCHLIST = config.get('watchlist', {}).get('stocks', [])
 POLL_INTERVAL_SEC = 5 * 60
+
+def get_intraday_cutoff():
+    """Return cutoff time as datetime.time, or None if disabled."""
+    cutoff_str = config.get('time', {}).get('intraday_cutoff', None)
+    if not cutoff_str:
+        return None
+    from datetime import time as dt_time
+    parts = cutoff_str.split(':')
+    return dt_time(int(int(parts[0])), int(int(parts[1])))
+
+def is_too_late_for_trading():
+    """Return True if current time is past the intraday cutoff."""
+    cutoff = get_intraday_cutoff()
+    if cutoff is None:
+        return False
+    now = datetime.now().time()
+    return now > cutoff
 
 def _serialize(obj):
     import numpy as np
@@ -156,7 +236,10 @@ def check_intraday_signals(symbol, hist, nlive, yesterdays_data, intraday_low, i
     
     if below_20d_low and rsi_ok_short:
         distance_pct = round((low_20d_yesterday - intraday_low) / low_20d_yesterday * 100, 2)
-        sl_price = round(intraday_low * 1.035, 2)
+        sl_price = round(live_ltp * 1.035, 2)  # 3.5% above entry (SHORT)
+        target_price = round(live_ltp * 0.975, 2)  # ~2.5% below entry (take-profit)
+        target_pct = 2.5
+        _too_late = is_too_late_for_trading()  # Check if too late in the day
         
         # Plain-language instructions for a beginner
         short_instruction = (
@@ -176,7 +259,13 @@ def check_intraday_signals(symbol, hist, nlive, yesterdays_data, intraday_low, i
             f"  3. Exit: Watch the chart. If price rises above Rs.{low_20d_yesterday:,.2f} (the level it broke), "
             f"consider exiting. Or if the RSI line (the wavy line at the bottom of your chart) drops below 30, consider exiting."
         )
-        
+
+        # ─── Compute charges for SHORT ──────────────────────────────────────
+        charges_cfg = get_charges()
+        est_qty_s = estimate_quantity(live_ltp, 'SHORT')
+        trade_value_s = live_ltp * est_qty_s
+        total_ch_s, breakdown_ch_s = calculate_charges('SELL', trade_value_s, est_qty_s)
+
         signals.append({
             'type': 'SHORT (intraday)',
             'strategy': '20D Low Breakdown',
@@ -188,13 +277,25 @@ def check_intraday_signals(symbol, hist, nlive, yesterdays_data, intraday_low, i
             'distance_pct': distance_pct,
             'rsi_yesterday': round(rsi_yesterday, 1),
             'sl_price': sl_price,
+            'target_price': target_price,
+            'target_pct': target_pct,
             'entry_price': round(live_ltp, 2),
             'condition': f"Intraday low {intraday_low:.2f} broke below 20D low {low_20d_yesterday:.2f} ({distance_pct}% below). RSI yesterday: {rsi_yesterday:.1f}.",
             'beginner_instruction': short_instruction,
             'beginner_entry': short_entry,
             'beginner_sl': short_sl,
             'beginner_exit': short_exit,
-            'action': f"SL: Rs.{sl_price} (3.5% above intraday low). Exit when RSI < 45."
+            'action': f"SL: Rs.{sl_price} (3.5% above entry). Target: Rs.{target_price} ({target_pct}% below entry). Exit when RSI < 45.",
+            'too_late': _too_late,
+            'charges': {
+                'broker': 'Zerodha (intraday MIS)',
+                'estimated_total': round(total_ch_s, 2),
+                'breakdown': breakdown_ch_s,
+                'break_even_price': round(live_ltp - total_ch_s / est_qty_s, 2) if est_qty_s > 0 else 0,
+                'min_profit_for_value': round(est_qty_s * 0.005, 2) if est_qty_s > 0 else 0,
+                'estimated_quantity': est_qty_s,
+                'estimated_trade_value': round(trade_value_s, 2),
+            }
         })
     
     # LONG: BB Mid Reclaim
@@ -209,7 +310,10 @@ def check_intraday_signals(symbol, hist, nlive, yesterdays_data, intraday_low, i
     
     if reclaim:
         sl_price = round(live_ltp * 0.965, 2)
-        
+        target_price = round(live_ltp * 1.025, 2)  # ~2.5% above entry (take-profit)
+        target_pct = 2.5
+        _too_late = is_too_late_for_trading()
+
         # Plain-language instructions for a beginner
         long_instruction = (
             f"This looks like a BUY setup. {symbol} price went above its 20-day average of Rs.{bb_mid_yesterday:,.2f}. "
@@ -228,7 +332,13 @@ def check_intraday_signals(symbol, hist, nlive, yesterdays_data, intraday_low, i
             f"  3. Exit: Watch the chart. If price falls below Rs.{bb_mid_yesterday:,.2f} (the average it crossed above), "
             f"consider exiting. Or if the RSI line (the wavy line at the bottom of your chart) goes above 70, consider exiting."
         )
-        
+
+        # ─── Compute charges (before building signal dict) ────────────────────────
+        charges_cfg = get_charges()
+        est_qty = estimate_quantity(live_ltp, 'LONG')
+        trade_value = live_ltp * est_qty
+        total_charges, charge_breakdown = calculate_charges('BUY', trade_value, est_qty)
+
         signals.append({
             'type': 'LONG (intraday)',
             'strategy': 'BB Mid Reclaim',
@@ -246,9 +356,19 @@ def check_intraday_signals(symbol, hist, nlive, yesterdays_data, intraday_low, i
             'beginner_entry': long_entry,
             'beginner_sl': long_sl,
             'beginner_exit': long_exit,
-            'action': f"SL: Rs.{sl_price} (3.5% below entry). Exit when RSI > 55."
+            'action': f"SL: Rs.{sl_price} (3.5% below entry). Target: Rs.{target_price} ({target_pct}% above entry). Exit when RSI > 55.",
+            'too_late': _too_late,
+            'charges': {
+                'broker': 'Zerodha (intraday MIS)',
+                'estimated_total': round(total_charges, 2),
+                'breakdown': charge_breakdown,
+                'break_even_price': round(live_ltp + total_charges / est_qty, 2) if est_qty > 0 else 0,
+                'min_profit_for_value': round(est_qty * 0.005, 2) if est_qty > 0 else 0,
+                'estimated_quantity': est_qty,
+                'estimated_trade_value': round(trade_value, 2),
+            }
         })
-    
+
     return signals
 
 class IntradayTracker:
@@ -402,16 +522,36 @@ def run_intraday_monitor():
                         detected_signals.add(sig_key)
                         all_new_signals.append(sig)
                         print(f"\n  ⚡ SIGNAL: {sig['type']} — {sig['stock']}")
+                        # ─── Time cutoff check ──────────────────────────────────────────
+                        if sig.get('too_late', False):
+                            cutoff = get_intraday_cutoff()
+                            print(f"     ⚠️  NOT RECOMMENDED — current time is past the intraday cutoff ({cutoff.strftime('%H:%M')} IST)")
+                            print(f"     The setup qualified, but there may not be enough time left in the day to reach your target.")
+                            print(f"     Consider waiting for the next trading day, or evaluate with extra caution.")
+                            print()
+                            continue  # Skip the full analysis below
+                        
                         if 'beginner_instruction' in sig:
                             print(f"     {sig['beginner_instruction']}")
                             print(f"     {sig['beginner_entry']}")
                             print(f"     {sig['beginner_sl']}")
                             print(f"     {sig['beginner_exit']}")
-                            # Add a simple quantity guide
-                            print(f"     Quantity guide: For a small capital (e.g., Rs.50,000), "
-                                  f"a typical trade might be 50-100 shares. "
-                                  f"With MIS (intraday), your broker may give 3-5x leverage, "
-                                  f"so you can buy more. Start small — paper trade first.")
+
+                        # Charges + target awareness
+                        if 'charges' in sig:
+                            c = sig['charges']
+                            print(f"     Charges (Zerodha intraday MIS, est.): Rs.{c['estimated_total']:,.2f}")
+                            be = c.get('break_even_price', 0)
+                            print(f"     Break-even for this trade size: Rs.{be:,.2f}" if be > 0 else "     Break-even: N\\A")
+                            # Target (take-profit)
+                            tp = sig.get('target_price', 0)
+                            tpp = sig.get('target_pct', 0)
+                            if tp > 0:
+                                direction = "rise" if sig['type'].startswith('LONG') else "drop"
+                                print(f"     🎯 Target (take-profit): Rs.{tp:,.2f} ({tpp}% {direction})")
+                                print(f"     Exit here if reached — don't get greedy, take the profit.")
+                            # Quantity guide
+                            print(f"     Quantity guide: With your capital (~Rs.10,000), a typical trade might be 10-25 shares. With MIS (intraday), you may get leverage — start small, paper trade first.")
                         else:
                             print(f"     LTP: Rs.{sig['live_ltp']:,.2f}")
                             print(f"     {sig['condition']}")
@@ -428,7 +568,7 @@ def run_intraday_monitor():
                 logger.info(f"New signals saved: {len(all_new_signals)}")
             
             print(f"\n  Sleep {POLL_INTERVAL_SEC//60} min. Ctrl+C to stop.")
-            time.sleep(POLL_INTERVAL_SEC)
+            _time_module.sleep(POLL_INTERVAL_SEC)
             
     except KeyboardInterrupt:
         logger.info("Monitor stopped by user.")
