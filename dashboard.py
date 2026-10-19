@@ -845,9 +845,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     COLLECTOR.active = True
                     COLLECTOR.start()
                 logger.info("Collector started via /api/start")
-                self._send_json(200, {"status": "started"})
+                self._send_json(200, {"status": "started", "running": True})
             return
-            self._send_json(200, {"status": "stopped"})
+        elif path == "/api/stop":
+            if STATE.running:
+                STATE.running = False
+                STATE.collector_running = False
+                COLLECTOR.active = False
+                logger.info("Collector stopped via /api/stop")
+                self._send_json(200, {"status": "stopped", "running": False})
+            else:
+                self._send_json(200, {"status": "already stopped"})
+            return
         elif path == "/api/toggle_strategy":
             name = data.get("name", "").strip()
             enabled = data.get("enabled", True)

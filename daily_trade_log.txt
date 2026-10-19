@@ -1,0 +1,53 @@
+  ⚡ SIGNAL: SHORT (intraday) — RELIANCE
+     This looks like a SELL (short) setup. RELIANCE price dropped below its 20-day low of Rs.1,226.40. If you want to act on this:
+       1. On Kite: Search 'RELIANCE' → Click SELL → Select Product: MIS (Intraday) → Enter price: Rs.1,219.70 (market) or Rs.1,207.50 (limit, for a better price) → Quantity: decide based on your capital (see note below) → Place order
+       2. Stop Loss (safety net): Set a STOP LOSS order at Rs.1,262.39. If price rises to this level, your position closes automatically — limiting your loss to about 3.5%.
+       3. Exit: Watch the chart. If price rises above Rs.1,226.40 (the level it broke), consider exiting. Or if the RSI line (the wavy line at the bottom of your chart) drops below 30, consider exiting.
+     Charges (Zerodha intraday MIS, est.): Rs.62.14
+     Break-even for this trade size: Rs.1,213.49
+     Quantity guide: With your capital (~Rs.10,000), a typical trade might be 10-25 shares. With MIS (intraday), you may get leverage — start small, paper trade first.
+
+	   ⚡ SIGNAL: SHORT (intraday) — TCS
+     This looks like a SELL (short) setup. TCS price dropped below its 20-day low of Rs.2,075.30. If you want to act on this:
+       1. On Kite: Search 'TCS' → Click SELL → Select Product: MIS (Intraday) → Enter price: Rs.2,066.90 (market) or Rs.2,046.23 (limit, for a better price) → Quantity: decide based on your capital (see note below) → Place order
+       2. Stop Loss (safety net): Set a STOP LOSS order at Rs.2,113.99. If price rises to this level, your position closes automatically — limiting your loss to about 3.5%.
+       3. Exit: Watch the chart. If price rises above Rs.2,075.30 (the level it broke), consider exiting. Or if the RSI line (the wavy line at the bottom of your chart) drops below 30, consider exiting.
+     Charges (Zerodha intraday MIS, est.): Rs.72.52
+     Break-even for this trade size: Rs.2,059.65
+     Quantity guide: With your capital (~Rs.10,000), a typical trade might be 10-25 shares. With MIS (intraday), you may get leverage — start small, paper trade first.
+
+	   ⚡ SIGNAL: SHORT (intraday) — INFY
+     This looks like a SELL (short) setup. INFY price dropped below its 20-day low of Rs.1,015.10. If you want to act on this:
+       1. On Kite: Search 'INFY' → Click SELL → Select Product: MIS (Intraday) → Enter price: Rs.1,001.40 (market) or Rs.991.39 (limit, for a better price) → Quantity: decide based on your capital (see note below) → Place order
+       2. Stop Loss (safety net): Set a STOP LOSS order at Rs.1,027.03. If price rises to this level, your position closes automatically — limiting your loss to about 3.5%.
+       3. Exit: Watch the chart. If price rises above Rs.1,015.10 (the level it broke), consider exiting. Or if the RSI line (the wavy line at the bottom of your chart) drops below 30, consider exiting.
+     Charges (Zerodha intraday MIS, est.): Rs.59.47
+     Break-even for this trade size: Rs.995.45
+     Quantity guide: With your capital (~Rs.10,000), a typical trade might be 10-25 shares. With MIS (intraday), you may get leverage — start small, paper trade first.
+
+	   ⚡ SIGNAL: LONG (intraday) — TATASTEEL
+     This looks like a BUY setup. TATASTEEL price went above its 20-day average of Rs.185.68. If you want to act on this:
+       1. On Kite: Search 'TATASTEEL' → Click BUY → Select Product: MIS (Intraday) → Enter price: Rs.188.25 (market) or Rs.184.48 (limit, for a better price) → Quantity: decide based on your capital (see note below) → Place order
+       2. Stop Loss (safety net): Set a STOP LOSS order at Rs.181.66. If price falls to this level, your position closes automatically — limiting your loss to about 3.5%.
+       3. Exit: Watch the chart. If price falls below Rs.185.68 (the average it crossed above), consider exiting. Or if the RSI line (the wavy line at the bottom of your chart) goes above 70, consider exiting.
+     Charges (Zerodha intraday MIS, est.): Rs.52.04
+     Break-even for this trade size: Rs.190.73
+     Quantity guide: With your capital (~Rs.10,000), a typical trade might be 10-25 shares. With MIS (intraday), you may get leverage — start small, paper trade first.
+
+	   ⚡ SIGNAL: SHORT (intraday) — WIPRO
+     This looks like a SELL (short) setup. WIPRO price dropped below its 20-day low of Rs.163.21. If you want to act on this:
+       1. On Kite: Search 'WIPRO' → Click SELL → Select Product: MIS (Intraday) → Enter price: Rs.163.23 (market) or Rs.161.60 (limit, for a better price) → Quantity: decide based on your capital (see note below) → Place order
+       2. Stop Loss (safety net): Set a STOP LOSS order at Rs.167.51. If price rises to this level, your position closes automatically — limiting your loss to about 3.5%.
+       3. Exit: Watch the chart. If price rises above Rs.163.21 (the level it broke), consider exiting. Or if the RSI line (the wavy line at the bottom of your chart) drops below 30, consider exiting.
+     Charges (Zerodha intraday MIS, est.): Rs.52.00
+     Break-even for this trade size: Rs.161.06
+     Quantity guide: With your capital (~Rs.10,000), a typical trade might be 10-25 shares. With MIS (intraday), you may get leverage — start small, paper trade first.
+
+	   ⚡ SIGNAL: SHORT (intraday) — MARUTI
+     This looks like a SELL (short) setup. MARUTI price dropped below its 20-day low of Rs.12,103.00. If you want to act on this:
+       1. On Kite: Search 'MARUTI' → Click SELL → Select Product: MIS (Intraday) → Enter price: Rs.12,060.00 (market) or Rs.11,939.40 (limit, for a better price) → Quantity: decide based on your capital (see note below) → Place order
+       2. Stop Loss (safety net): Set a STOP LOSS order at Rs.12,450.01. If price rises to this level, your position closes automatically — limiting your loss to about 3.5%.
+       3. Exit: Watch the chart. If price rises above Rs.12,103.00 (the level it broke), consider exiting. Or if the RSI line (the wavy line at the bottom of your chart) drops below 30, consider exiting.
+     Charges (Zerodha intraday MIS, est.): Rs.194.95
+     Break-even for this trade size: Rs.12,040.50
+     Quantity guide: With your capital (~Rs.10,000), a typical trade might be 10-25 shares. With MIS (intraday), you may get leverage — start small, paper trade first.

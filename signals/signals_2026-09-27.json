@@ -1,0 +1,259 @@
+{
+  "scan_date": "2026-09-27",
+  "data_as_of": "2026-09-27",
+  "today": "2026-09-28",
+  "timestamp": "2026-09-28T10:42:42.789073",
+  "nifty": {
+    "close": 23140.5,
+    "sma_20": 23553.3,
+    "regime": "BEARISH",
+    "change_from_prev": 77.4,
+    "change_pct": 0.34
+  },
+  "signals": [
+    {
+      "type": "SHORT",
+      "strategy": "20D Low Breakdown",
+      "stock": "ICICIBANK",
+      "date": "2026-09-24",
+      "close": 1326.8,
+      "entry_zone_low": 1322.82,
+      "entry_zone_high": 1326.8,
+      "stop_loss": 1373.24,
+      "stop_loss_pct": 3.5,
+      "rsi": 14.2,
+      "low_20d": 1330.1,
+      "distance_from_low": 0.25,
+      "volume": 10.8,
+      "volume_ratio": 1.18,
+      "nifty_close": 23140.5,
+      "nifty_sma20": 23553.3,
+      "nifty_regime": "BEARISH",
+      "rationale": "Close 1326.8 broke below 20-day low 1330.1 (distance: -0.25%). RSI at 14.2. Nifty bearish (23140.0 vs 20DMA 23553.0).",
+      "target_price": 1300.26,
+      "target_pct": 2.0,
+      "charges": {
+        "broker": "Zerodha (intraday MIS)",
+        "estimated_total": 63.45,
+        "breakdown": {
+          "brokerage": 40,
+          "gst": 7.2,
+          "stt": 13.27,
+          "exchange": 1.0,
+          "sebi": 0.0,
+          "stamp_duty": 1.99
+        },
+        "break_even_price": 1320.46,
+        "min_profit_for_value": 0.05,
+        "estimated_quantity": 10,
+        "estimated_trade_value": 13268.0
+      }
+    },
+    {
+      "type": "SHORT",
+      "strategy": "20D Low Breakdown",
+      "stock": "KOTAKBANK",
+      "date": "2026-09-24",
+      "close": 404.0,
+      "entry_zone_low": 402.79,
+      "entry_zone_high": 404.0,
+      "stop_loss": 418.14,
+      "stop_loss_pct": 3.5,
+      "rsi": 29.4,
+      "low_20d": 404.3,
+      "distance_from_low": 0.07,
+      "volume": 18.2,
+      "volume_ratio": 1.59,
+      "nifty_close": 23140.5,
+      "nifty_sma20": 23553.3,
+      "nifty_regime": "BEARISH",
+      "rationale": "Close 404.0 broke below 20-day low 404.3 (distance: -0.07%). RSI at 29.4. Nifty bearish (23140.0 vs 20DMA 23553.0).",
+      "target_price": 395.92,
+      "target_pct": 2.0,
+      "charges": {
+        "broker": "Zerodha (intraday MIS)",
+        "estimated_total": 52.15,
+        "breakdown": {
+          "brokerage": 40,
+          "gst": 7.2,
+          "stt": 4.04,
+          "exchange": 0.3,
+          "sebi": 0.0,
+          "stamp_duty": 0.61
+        },
+        "break_even_price": 398.78,
+        "min_profit_for_value": 0.05,
+        "estimated_quantity": 10,
+        "estimated_trade_value": 4040.0
+      }
+    }
+  ],
+  "signal_count": 2,
+  "watchlist_status": [
+    {
+      "stock": "RELIANCE",
+      "close": 1226.0,
+      "rsi": 23.9,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -3.3,
+      "low_20d": 1219.2,
+      "volume": 13.1
+    },
+    {
+      "stock": "HDFCBANK",
+      "close": 735.6,
+      "rsi": 60.5,
+      "status": "no signal",
+      "details": "",
+      "bb_position": 2.7,
+      "low_20d": 681.9,
+      "volume": 19.9
+    },
+    {
+      "stock": "ICICIBANK",
+      "close": 1326.8,
+      "rsi": 14.2,
+      "status": "SIGNAL (SHORT)",
+      "details": "20D breakdown (0.25% below)",
+      "bb_position": -4.0,
+      "low_20d": 1330.1,
+      "volume": 10.8
+    },
+    {
+      "stock": "SBIN",
+      "close": 983.0,
+      "rsi": 38.2,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -2.2,
+      "low_20d": 968.0,
+      "volume": 3.8
+    },
+    {
+      "stock": "BHARTIARTL",
+      "close": 1785.4,
+      "rsi": 40.6,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -2.9,
+      "low_20d": 1795.8,
+      "volume": 4.8
+    },
+    {
+      "stock": "KOTAKBANK",
+      "close": 404.0,
+      "rsi": 29.4,
+      "status": "SIGNAL (SHORT)",
+      "details": "20D breakdown (0.07% below)",
+      "bb_position": -3.0,
+      "low_20d": 404.3,
+      "volume": 18.2
+    },
+    {
+      "stock": "LT",
+      "close": 3876.2,
+      "rsi": 42.4,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -1.3,
+      "low_20d": 3799.9,
+      "volume": 1.2
+    },
+    {
+      "stock": "MARUTI",
+      "close": 12065,
+      "rsi": 29.2,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -3.8,
+      "low_20d": 11975.0,
+      "volume": 0.3
+    },
+    {
+      "stock": "NTPC",
+      "close": 326.6,
+      "rsi": 39.8,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -0.8,
+      "low_20d": 321.0,
+      "volume": 6.1
+    },
+    {
+      "stock": "WIPRO",
+      "close": 164.02,
+      "rsi": 24.5,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -3.9,
+      "low_20d": 163.21,
+      "volume": 9.7
+    },
+    {
+      "stock": "TATASTEEL",
+      "close": 187.97,
+      "rsi": 48.8,
+      "status": "no signal",
+      "details": "",
+      "bb_position": 1.2,
+      "low_20d": 180.28,
+      "volume": 15.9
+    },
+    {
+      "stock": "TITAN",
+      "close": 4884.0,
+      "rsi": 39.9,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -1.6,
+      "low_20d": 4772.0,
+      "volume": 0.4
+    },
+    {
+      "stock": "HCLTECH",
+      "close": 1258.0,
+      "rsi": 42.4,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -1.1,
+      "low_20d": 1195.7,
+      "volume": 1.6
+    },
+    {
+      "stock": "INFY",
+      "close": 1000.2,
+      "rsi": 19.6,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -6.8,
+      "low_20d": 1005.2,
+      "volume": 10.2
+    },
+    {
+      "stock": "TCS",
+      "close": 2082.0,
+      "rsi": 20.2,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -6.3,
+      "low_20d": 2067.1,
+      "volume": 3.3
+    },
+    {
+      "stock": "ASIANPAINT",
+      "close": 2444.0,
+      "rsi": 41.2,
+      "status": "no signal",
+      "details": "",
+      "bb_position": -1.5,
+      "low_20d": 2391.0,
+      "volume": 0.4
+    }
+  ],
+  "strategies_checked": [
+    "BB Mid Reclaim (Long)",
+    "20D Low Breakdown (Short)"
+  ],
+  "disclaimer": "Signals are for informational purposes only. Always confirm on your trading platform before executing. Past performance does not guarantee future results."
+}

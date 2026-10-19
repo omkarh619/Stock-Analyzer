@@ -1,0 +1,72 @@
+{
+  "running": true,
+  "collector_running": true,
+  "last_update": "2026-10-19T14:03:22.772169",
+  "nifty": {
+    "symbol": "NIFTY",
+    "price": 22892.0,
+    "sma20": 22818.17,
+    "regime": "BULLISH",
+    "source": "live"
+  },
+  "symbols": [
+    "RELIANCE",
+    "HDFCBANK",
+    "ICICIBANK",
+    "SBIN",
+    "BHARTIARTL",
+    "KOTAKBANK",
+    "LT",
+    "MARUTI",
+    "NTPC",
+    "WIPRO",
+    "TATASTEEL",
+    "TITAN",
+    "HCLTECH",
+    "INFY",
+    "TCS",
+    "ASIANPAINT"
+  ],
+  "strategies": {
+    "short_20d_low_breakdown": {
+      "enabled": true,
+      "last_signal": null,
+      "signal_count": 0,
+      "filters": {
+        "rsi_max": 50,
+        "gap_min_pct": 0.5,
+        "breakdown_min_pct": 0.5
+      }
+    },
+    "long_bb_reclaim": {
+      "enabled": true,
+      "last_signal": null,
+      "signal_count": 0,
+      "filters": {
+        "rsi_min": 35,
+        "bb_threshold": 1.8
+      }
+    },
+    "orb": {
+      "enabled": true,
+      "last_signal": null,
+      "signal_count": 0,
+      "filters": {
+        "or_span": 15,
+        "cross_min_pct": 0.3
+      }
+    }
+  },
+  "stock_data": {},
+  "price_history": {},
+  "collector_last_cycle_time": "2026-10-19T14:03:22.772169",
+  "collector_last_cycle_duration": 0.0,
+  "collector_cycle_errors": 0,
+  "nse_ltp_status": "failing",
+  "data_samples_today": 0,
+  "price_history_counts": {},
+  "price_history_total": 0,
+  "active_signals": [],
+  "uptime_seconds": 0,
+  "ltp_cache": {}
+}

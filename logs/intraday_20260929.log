@@ -1,0 +1,68 @@
+2026-09-29 09:59:46,187 [INFO] ============================================================
+2026-09-29 09:59:46,187 [INFO] COMBINED INTRADAY MONITOR + DATA COLLECTOR
+2026-09-29 09:59:46,187 [INFO] Started: 09:59:46 | Poll: 1 min | Filters active
+2026-09-29 10:02:49,888 [INFO] ============================================================
+2026-09-29 10:02:49,888 [INFO] COMBINED INTRADAY MONITOR + DATA COLLECTOR
+2026-09-29 10:02:49,888 [INFO] Started: 10:02:49 | Poll: 1 min | Filters active
+2026-09-29 10:02:49,889 [INFO] Short filters: RSI 25-45, gap≥0.5%, breakdown≥0.5%
+2026-09-29 10:02:49,889 [INFO] Long filters: RSI 40-65, gap≥0.5%, cross≥0.3%
+2026-09-29 10:02:49,889 [INFO] Target: 2.5% (SHORT) / 2.5% (LONG) | SL: 3.5% | Nifty confirm: True / True
+2026-09-29 10:02:49,890 [INFO] Nifty: None | 20 SMA: None | Regime: BEARISH
+2026-09-29 10:02:49,890 [INFO] ============================================================
+2026-09-29 10:03:39,303 [INFO] ============================================================
+2026-09-29 10:03:39,303 [INFO] COMBINED INTRADAY MONITOR + DATA COLLECTOR
+2026-09-29 10:03:39,303 [INFO] Started: 10:03:39 | Poll: 1 min | Filters active
+2026-09-29 10:03:39,303 [INFO] Short filters: RSI 25-45, gap≥0.5%, breakdown≥0.5%
+2026-09-29 10:03:39,303 [INFO] Long filters: RSI 40-65, gap≥0.5%, cross≥0.3%
+2026-09-29 10:03:39,303 [INFO] Target: 2.5% (SHORT) / 2.5% (LONG) | SL: 3.5% | Nifty confirm: True / True
+2026-09-29 10:03:39,303 [INFO] Nifty: None | 20 SMA: None | Regime: BEARISH
+2026-09-29 10:03:39,303 [INFO] ============================================================
+2026-09-29 10:03:41,948 [ERROR] Error: 'enabled'
+2026-09-29 10:04:28,708 [INFO] ============================================================
+2026-09-29 10:04:28,708 [INFO] COMBINED INTRADAY MONITOR + DATA COLLECTOR
+2026-09-29 10:04:28,708 [INFO] Started: 10:04:28 | Poll: 1 min | Filters active
+2026-09-29 10:04:28,709 [INFO] Short filters: RSI 25-45, gap≥0.5%, breakdown≥0.5%
+2026-09-29 10:04:28,709 [INFO] Long filters: RSI 40-65, gap≥0.5%, cross≥0.3%
+2026-09-29 10:04:28,709 [INFO] Target: 2.5% (SHORT) / 2.5% (LONG) | SL: 3.5% | Nifty confirm: True / True
+2026-09-29 10:04:28,709 [INFO] Nifty: None | 20 SMA: None | Regime: BEARISH
+2026-09-29 10:04:28,710 [INFO] ============================================================
+2026-09-29 10:04:30,447 [ERROR] Error: 'enabled'
+2026-09-29 10:05:02,705 [INFO] ============================================================
+2026-09-29 10:05:02,705 [INFO] COMBINED INTRADAY MONITOR + DATA COLLECTOR
+2026-09-29 10:05:02,705 [INFO] Started: 10:05:02 | Poll: 1 min | Filters active
+2026-09-29 10:05:02,705 [INFO] Short filters: RSI 25-45, gap≥0.5%, breakdown≥0.5%
+2026-09-29 10:05:02,705 [INFO] Long filters: RSI 40-65, gap≥0.5%, cross≥0.3%
+2026-09-29 10:05:02,705 [INFO] Target: 2.5% (SHORT) / 2.5% (LONG) | SL: 3.5% | Nifty confirm: True / True
+2026-09-29 10:05:02,705 [INFO] Nifty: None | 20 SMA: None | Regime: BEARISH
+2026-09-29 10:05:02,705 [INFO] ============================================================
+2026-09-29 10:07:43,719 [INFO] ============================================================
+2026-09-29 10:07:43,719 [INFO] COMBINED INTRADAY MONITOR + DATA COLLECTOR
+2026-09-29 10:07:43,719 [INFO] Started: 10:07:43 | Poll: 1 min | Filters active
+2026-09-29 10:07:43,720 [INFO] Short filters: RSI 25-45, gap≥0.5%, breakdown≥0.5%
+2026-09-29 10:07:43,720 [INFO] Long filters: RSI 40-65, gap≥0.5%, cross≥0.3%
+2026-09-29 10:07:43,720 [INFO] Target: 2.5% (SHORT) / 2.5% (LONG) | SL: 3.5% | Nifty confirm: True / True
+2026-09-29 10:07:43,720 [INFO] Nifty: None | 20 SMA: None | Regime: BEARISH
+2026-09-29 10:07:43,720 [INFO] ============================================================
+2026-09-29 10:07:47,400 [ERROR] Error: 'sl_pct'
+2026-09-29 10:12:31,625 [INFO] ============================================================
+2026-09-29 10:12:31,625 [INFO] COMBINED INTRADAY MONITOR + DATA COLLECTOR
+2026-09-29 10:12:31,625 [INFO] Started: 10:12:31 | Poll: 1 min | Filters active
+2026-09-29 10:12:31,625 [INFO] Short filters: RSI 25-45, gap≥0.5%, breakdown≥0.5%
+2026-09-29 10:12:31,625 [INFO] Long filters: RSI 40-65, gap≥0.5%, cross≥0.3%
+2026-09-29 10:12:31,625 [INFO] Target: 2.5% (SHORT) / 2.5% (LONG) | SL: 3.5% | Nifty confirm: True / True
+2026-09-29 10:12:31,625 [INFO] Nifty: None | 20 SMA: None | Regime: BEARISH
+2026-09-29 10:12:31,625 [INFO] ============================================================
+2026-09-29 10:12:33,986 [INFO] Signals updated: 2 new, 0 updates
+2026-09-29 10:14:47,971 [INFO] ============================================================
+2026-09-29 10:14:47,971 [INFO] COMBINED INTRADAY MONITOR + DATA COLLECTOR
+2026-09-29 10:14:47,971 [INFO] Started: 10:14:47 | Poll: 1 min | Filters active
+2026-09-29 10:14:47,971 [INFO] Short filters: RSI 25-45, gap≥0.5%, breakdown≥0.5%
+2026-09-29 10:14:47,972 [INFO] Long filters: RSI 40-65, gap≥0.5%, cross≥0.3%
+2026-09-29 10:14:47,972 [INFO] Target: 2.5% (SHORT) / 2.5% (LONG) | SL: 3.5% | Nifty confirm: True / True
+2026-09-29 10:14:47,972 [INFO] Nifty: None | 20 SMA: None | Regime: BEARISH
+2026-09-29 10:14:47,972 [INFO] ============================================================
+2026-09-29 10:14:49,656 [INFO] Signals updated: 2 new, 0 updates
+2026-09-29 10:16:42,514 [INFO] Signals updated: 1 new, 0 updates
+2026-09-29 10:16:53,505 [INFO] Signals updated: 1 new, 0 updates
+2026-09-29 13:40:04,290 [INFO] Signals updated: 1 new, 0 updates
+2026-09-29 15:30:29,279 [INFO] Market closed. Stopping.

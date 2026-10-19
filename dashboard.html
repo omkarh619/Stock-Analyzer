@@ -1280,7 +1280,7 @@ function renderMarket(s) {
     : uptimeSec > 60
       ? Math.floor(uptimeSec / 60) + 'm ' + (uptimeSec % 60) + 's'
       : uptimeSec + 's';
-  document.getElementById('uptime').textContent = '⏱ ' + (uptimeStr || '--');
+  document.getElementById('currentTime').textContent = '⏱ ' + (uptimeStr || '--');
 }
 
 function renderStats(s) {

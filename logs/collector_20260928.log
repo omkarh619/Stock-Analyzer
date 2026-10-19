@@ -1,0 +1,7 @@
+2026-09-28 10:45:01,251 [INFO] Tracking restored: 0 symbols from existing data
+2026-09-28 10:45:03,350 [INFO] =======================================================
+2026-09-28 10:45:03,350 [INFO] INTRADAY DATA COLLECTOR — 1-min intervals
+2026-09-28 10:45:03,350 [INFO] Started: 10:45:03 | File: 2026-09-28.jsonl
+2026-09-28 10:45:03,350 [INFO] Stocks: 16 | Retention: 30 days
+2026-09-28 10:45:03,350 [INFO] =======================================================
+2026-09-28 15:30:56,380 [INFO] Market closed. Collection stopped.

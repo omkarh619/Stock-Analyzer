@@ -1,0 +1,18 @@
+{
+  "date": "2026-09-25",
+  "market": {
+    "nifty_change_pct": null,
+    "nifty_close": null,
+    "regime": "BEARISH"
+  },
+  "signals": [],
+  "stats": {
+    "total": 0,
+    "hit_target": 0,
+    "hit_sl": 0,
+    "reversed": 0,
+    "open_at_close": 0,
+    "no_data": 0
+  },
+  "yesterday_signals_count": 0
+}
