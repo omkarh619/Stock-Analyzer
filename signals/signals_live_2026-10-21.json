@@ -1,0 +1,11 @@
+[
+  {
+    "type": "SHORT (intraday)",
+    "strategy": "20D Low Breakdown",
+    "stock": "RELIANCE",
+    "time": "10:37:24",
+    "entry_price": 1209.9,
+    "sl_price": 1252.25,
+    "target_price": 1179.65
+  }
+]

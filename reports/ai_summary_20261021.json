@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-21",
+  "market": {
+    "nifty_change_pct": -1.2418424473637724,
+    "nifty_close": 22676.7,
+    "regime": "BEARISH"
+  },
+  "signals": [
+    {
+      "stock": "RELIANCE",
+      "type": "SHORT",
+      "strategy": "20D Low Breakdown",
+      "time_fired": "10:37:24",
+      "entry": 1209.9,
+      "target": 1179.65,
+      "sl": 1252.25,
+      "outcome": "OPEN_AT_CLOSE",
+      "final_ltp": 1203.7,
+      "pnl_pct": 0.51,
+      "target_reached": false,
+      "sl_reached": false,
+      "day_high": 1225.9,
+      "day_low": 1201.5
+    }
+  ],
+  "stats": {
+    "total": 1,
+    "hit_target": 0,
+    "hit_sl": 0,
+    "reversed": 0,
+    "open_at_close": 1,
+    "no_data": 0
+  },
+  "yesterday_signals_count": 0
+}

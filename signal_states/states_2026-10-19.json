@@ -1,11 +1,11 @@
 {
   "running": true,
   "collector_running": true,
-  "last_update": "2026-10-19T14:03:22.772169",
+  "last_update": "2026-10-19T14:17:16.014586",
   "nifty": {
     "symbol": "NIFTY",
-    "price": 22892.0,
-    "sma20": 22818.17,
+    "price": 22867.05078125,
+    "sma20": 22816.91,
     "regime": "BULLISH",
     "source": "live"
   },
@@ -59,7 +59,7 @@
   },
   "stock_data": {},
   "price_history": {},
-  "collector_last_cycle_time": "2026-10-19T14:03:22.772169",
+  "collector_last_cycle_time": "2026-10-19T14:17:16.014586",
   "collector_last_cycle_duration": 0.0,
   "collector_cycle_errors": 0,
   "nse_ltp_status": "failing",

@@ -1,0 +1,205 @@
+{
+  "analysis_date": "2026-10-21",
+  "generated_at": "2026-10-21 15:49:02",
+  "market_summary": {
+    "nifty": {
+      "first_ltp": 22961.85,
+      "last_ltp": 22676.7,
+      "high": 22994.1,
+      "low": 22652.2,
+      "change_pct": -1.2418424473637724
+    },
+    "stocks": {
+      "RELIANCE": {
+        "first_ltp": 1218.7,
+        "last_ltp": 1203.7,
+        "high": 1225.9,
+        "low": 1201.5,
+        "range_pct": 2.03,
+        "change_pct": -1.23,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "ASIANPAINT": {
+        "first_ltp": 2337.1,
+        "last_ltp": 2302.9,
+        "high": 2340.2,
+        "low": 2299.4,
+        "range_pct": 1.77,
+        "change_pct": -1.46,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "TCS": {
+        "first_ltp": 2508.3,
+        "last_ltp": 2508.8,
+        "high": 2529.7,
+        "low": 2501.4,
+        "range_pct": 1.13,
+        "change_pct": 0.02,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "INFY": {
+        "first_ltp": 1165.1,
+        "last_ltp": 1162.25,
+        "high": 1168.6,
+        "low": 1151.5,
+        "range_pct": 1.49,
+        "change_pct": -0.24,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "HCLTECH": {
+        "first_ltp": 1404.2,
+        "last_ltp": 1400.7,
+        "high": 1409.7,
+        "low": 1397.9,
+        "range_pct": 0.84,
+        "change_pct": -0.25,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "TATASTEEL": {
+        "first_ltp": 174.13,
+        "last_ltp": 170.97,
+        "high": 174.72,
+        "low": 170.67,
+        "range_pct": 2.37,
+        "change_pct": -1.81,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "WIPRO": {
+        "first_ltp": 189.06,
+        "last_ltp": 188.03,
+        "high": 189.57,
+        "low": 187.79,
+        "range_pct": 0.95,
+        "change_pct": -0.54,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "NTPC": {
+        "first_ltp": 306.55,
+        "last_ltp": 301.65,
+        "high": 307.05,
+        "low": 301.3,
+        "range_pct": 1.91,
+        "change_pct": -1.6,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "TITAN": {
+        "first_ltp": 4397.5,
+        "last_ltp": 4366.9,
+        "high": 4405.0,
+        "low": 4351.7,
+        "range_pct": 1.22,
+        "change_pct": -0.7,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "LT": {
+        "first_ltp": 3675.0,
+        "last_ltp": 3625.2,
+        "high": 3683.9,
+        "low": 3619.0,
+        "range_pct": 1.79,
+        "change_pct": -1.36,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "KOTAKBANK": {
+        "first_ltp": 442.45,
+        "last_ltp": 436.5,
+        "high": 442.45,
+        "low": 434.55,
+        "range_pct": 1.82,
+        "change_pct": -1.34,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "BHARTIARTL": {
+        "first_ltp": 1888.2,
+        "last_ltp": 1874.5,
+        "high": 1889.8,
+        "low": 1865.8,
+        "range_pct": 1.29,
+        "change_pct": -0.73,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "SBIN": {
+        "first_ltp": 974.45,
+        "last_ltp": 963.8,
+        "high": 982.1,
+        "low": 961.9,
+        "range_pct": 2.1,
+        "change_pct": -1.09,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "ICICIBANK": {
+        "first_ltp": 1403.0,
+        "last_ltp": 1384.3,
+        "high": 1407.0,
+        "low": 1383.2,
+        "range_pct": 1.72,
+        "change_pct": -1.33,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "HDFCBANK": {
+        "first_ltp": 711.7,
+        "last_ltp": 700.75,
+        "high": 712.7,
+        "low": 698.8,
+        "range_pct": 1.99,
+        "change_pct": -1.54,
+        "gap_pct": null,
+        "samples": 247
+      },
+      "MARUTI": {
+        "first_ltp": 11332.0,
+        "last_ltp": 11167.0,
+        "high": 11381.0,
+        "low": 11158.0,
+        "range_pct": 2.0,
+        "change_pct": -1.46,
+        "gap_pct": null,
+        "samples": 247
+      }
+    },
+    "total_samples": 3952,
+    "trading_hours": "10:30 — 14:59"
+  },
+  "signals_fired": 1,
+  "signal_results": [
+    {
+      "stock": "RELIANCE",
+      "type": "SHORT",
+      "strategy": "20D Low Breakdown",
+      "time_fired": "10:37:24",
+      "entry": 1209.9,
+      "target": 1179.65,
+      "sl": 1252.25,
+      "outcome": "OPEN_AT_CLOSE",
+      "final_ltp": 1203.7,
+      "pnl_pct": 0.51,
+      "target_reached": false,
+      "sl_reached": false,
+      "day_high": 1225.9,
+      "day_low": 1201.5
+    }
+  ],
+  "signal_stats": {
+    "total": 1,
+    "hit_target": 0,
+    "hit_sl": 0,
+    "reversed": 0,
+    "open_at_close": 1,
+    "no_data": 0
+  },
+  "yesterday_daily_signals": null
+}

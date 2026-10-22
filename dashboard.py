@@ -6,10 +6,10 @@ Opens browser at http://localhost:8899 — everything live, everything in one vi
 
 Project folder: D:/OpenCode/Stock/Stock Analyzer/
 New files: dashboard.py (this file), dashboard.html (served UI)
-Reuses: config.yaml, data/intraday/, signals/, signal_states/
+Reuses: config.yaml. Writes: data/dashboard/, signals/dashboard/, signal_states/dashboard/
 """
 
-import os, sys, json, time, threading, logging, subprocess, urllib.request, urllib.error
+import os, sys, json, time, threading, logging, subprocess, urllib.request, urllib.error, gzip
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -18,11 +18,14 @@ import calendar
 PROJECT = Path(r"D:\OpenCode\Stock\Stock Analyzer")
 PORT = 8899
 LOG_FILE = PROJECT / "logs" / f"dashboard_{date.today().strftime('%Y%m%d')}.log"
-DATA_DIR = PROJECT / "data" / "intraday"
-SIGNALS_DIR = PROJECT / "signals"
-STATES_DIR = PROJECT / "signal_states"
+DATA_DIR = PROJECT / "data" / "dashboard"
+SIGNALS_DIR = PROJECT / "signals" / "dashboard"
+STATES_DIR = PROJECT / "signal_states" / "dashboard"
 CONFIG_PATH = PROJECT / "config.yaml"
 HTML_PATH = PROJECT / "dashboard.html"
+
+# Retention for captured data/signal/state files
+RETENTION_DAYS = 30
 
 for d in [DATA_DIR, SIGNALS_DIR, STATES_DIR, LOG_FILE.parent]:
     d.mkdir(parents=True, exist_ok=True)
@@ -261,45 +264,157 @@ STATE = SharedState()
 
 # ── NSE data helpers ─────────────────────────────────────────────────────
 
+DEBUG_MODE = True  # development: always on; switch to False / env-based when production
+
+def log_debug(msg):
+    if DEBUG_MODE:
+        logger.debug(msg)
+
 def fetch_json(url, headers=None):
     if headers is None:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json",
+            "Accept": "application/json,text/plain,*/*",
+            "Accept-Encoding": "gzip",
+            "Referer": "https://www.nseindia.com/",
+            "X-Requested-With": "XMLHttpRequest",
         }
     req = urllib.request.Request(url, headers=headers)
+    t0 = time.time()
+    logger.info(f"FETCH_START url={url} symbol=N/A")
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            raw = resp.read()
+            if "gzip" in (resp.headers.get("Content-Encoding") or "").lower():
+                raw = gzip.decompress(raw)
+            body = raw.decode("utf-8")
+            data = json.loads(body)
+            elapsed = time.time() - t0
+            logger.info(f"FETCH_OK url={url} len={len(body)} elapsed_ms={int(elapsed*1000)} keys={list(data.keys())[:5]} debug={DEBUG_MODE}")
+            return data
     except Exception as e:
-        logger.debug(f"Fetch failed for {url}: {e}")
+        elapsed = time.time() - t0
+        logger.error(f"FETCH_FAIL url={url} error={e} elapsed_ms={int(elapsed*1000)}")
+        return None
+
+NSE_QUOTE_API = "https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi"
+NSE_INDEX_API = "https://www.nseindia.com/api/equity-stock-indices?index=NIFTY%2050"
+_MONTH_ABBR = {m.upper(): i for i, m in enumerate(calendar.month_abbr) if m}
+
+def _parse_nse_expiry(text):
+    """Parse NSE 'dd-MMM-yyyy' expiry into a date. Returns None if unparseable."""
+    if not text:
+        return None
+    try:
+        day, mon, year = str(text).strip().split("-")
+        return date(int(year), _MONTH_ABBR[mon.upper()], int(day))
+    except (ValueError, KeyError, TypeError):
         return None
 
 def fetch_nse_ltp(symbol):
-    """Get last traded price for a symbol (equity or F&O)."""
-    url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
-    data = fetch_json(url)
-    if data and "priceInfo" in data and "lastPrice" in data["priceInfo"]:
-        return float(data["priceInfo"]["lastPrice"])
-    url = f"https://www.nseindia.com/api/quote-derivative?symbol={symbol}"
-    data = fetch_json(url)
-    if data and "priceInfo" in data and "lastPrice" in data["priceInfo"]:
-        return float(data["priceInfo"]["lastPrice"])
+    """Get last traded price for a cash equity symbol (NSE NextApi), with yfinance + JSONL fallbacks."""
+    logger.info(f"NSE_LTP_START symbol={symbol}")
+    if symbol.upper() in ("NIFTY", "NIFTY50"):
+        # Index, not an equity — the equity quote API 404s on it.
+        return fetch_nifty_ltp()
+    url = (f"{NSE_QUOTE_API}?functionName=getSymbolData"
+           f"&marketType=N&series=EQ&symbol={symbol}")
+    for attempt in range(1, 3):
+        try:
+            logger.info(f"NSE_EQUITY_ATTEMPT symbol={symbol} attempt={attempt} url={url}")
+            data = fetch_json(url)
+            if data and isinstance(data, dict):
+                resp = data.get("equityResponse") or []
+                if resp:
+                    val = (resp[0].get("tradeInfo") or {}).get("lastPrice")
+                    if val is not None:
+                        logger.info(f"NSE_LTP_OK symbol={symbol} source=equity price={float(val)} attempt={attempt}")
+                        return float(val)
+                    logger.warning(f"NSE_LTP_NULL symbol={symbol} attempt={attempt} lastPrice=None")
+                else:
+                    logger.warning(f"NSE_EQUITY_BAD_DATA symbol={symbol} attempt={attempt} data_keys={list(data.keys())}")
+            else:
+                logger.warning(f"NSE_EQUITY_BAD_DATA symbol={symbol} attempt={attempt} data_keys=None")
+        except Exception as e:
+            logger.error(f"NSE_EQUITY_EXCEPTION symbol={symbol} attempt={attempt} error={e}")
+        if attempt < 2:
+            time.sleep(0.5)
+    # Final fallback: yfinance
+    logger.info(f"NSE_YFINANCE_FALLBACK symbol={symbol}")
+    try:
+        import yfinance as yf
+        ticker_symbol = f"{symbol}.NS" if symbol != "NIFTY" else "^NSEI"
+        ticker = yf.Ticker(ticker_symbol)
+        hist = ticker.history(period="2d")
+        if not hist.empty:
+            val = float(hist["Close"].iloc[-1])
+            logger.info(f"NSE_LTP_OK symbol={symbol} source=yfinance price={val}")
+            return val
+    except Exception as e:
+        logger.error(f"NSE_YFINANCE_FAIL symbol={symbol} error={e}")
+    # Last resort: today's intraday JSONL file
+    try:
+        today_str = date.today().strftime("%Y-%m-%d")
+        snap_path = DATA_DIR / f"{today_str}.jsonl"
+        if snap_path.exists():
+            with open(snap_path, "r", encoding="utf-8") as f:
+                lines = f.read().strip().split("\n")
+                if lines and lines[-1].strip():
+                    snapshot = json.loads(lines[-1])
+                    stocks = snapshot.get("stocks", {})
+                    if symbol in stocks and stocks[symbol].get("price"):
+                        val = float(stocks[symbol]["price"])
+                        logger.info(f"NSE_LTP_OK symbol={symbol} source=jsonl price={val}")
+                        return val
+    except Exception as e:
+        logger.error(f"NSE_JSONL_FAIL symbol={symbol} error={e}")
+    logger.error(f"NSE_LTP_FAIL symbol={symbol} all_attempts_exhausted")
     return None
 
 def fetch_nifty_ltp():
-    return fetch_nse_ltp("NIFTY")
+    """NIFTY 50 spot index price from NSE equity-stock-indices."""
+    try:
+        data = fetch_json(NSE_INDEX_API)
+        if data and isinstance(data, dict):
+            for row in data.get("data") or []:
+                if row.get("identifier") == "NIFTY 50":
+                    val = row.get("lastPrice")
+                    if val is not None:
+                        logger.info(f"NSE_LTP_OK symbol=NIFTY source=index price={float(val)}")
+                        return float(val)
+            logger.warning(f"NSE_INDEX_BAD_DATA symbol=NIFTY data_keys={list(data.keys())}")
+        else:
+            logger.warning(f"NSE_INDEX_BAD_DATA symbol=NIFTY data_keys=None")
+    except Exception as e:
+        logger.error(f"NSE_INDEX_EXCEPTION symbol=NIFTY error={e}")
+    return None
 
 def fetch_nifty_fut_ltp():
-    today = date.today()
-    for idx in range(3):
-        month_idx = (today.month + idx - 1) % 12 + 1
-        month_abbr = calendar.month_abbr[month_idx][:3].upper()
-        exp = f"{today.year}{month_abbr}"
-        symbol = f"NIFTY{exp}FO"
-        price = fetch_nse_ltp(symbol)
-        if price:
-            return price
+    """Front-month NIFTY futures price from NSE NextApi derivatives data."""
+    url = f"{NSE_QUOTE_API}?functionName=getSymbolDerivativesData&symbol=NIFTY"
+    try:
+        data = fetch_json(url)
+        if data and isinstance(data, dict):
+            rows = data.get("data") or []
+            futs = [r for r in rows if r.get("instrumentType") == "FUTIDX"]
+            parsed = []
+            for r in futs:
+                exp = _parse_nse_expiry(r.get("expiryDate"))
+                if exp is not None:
+                    parsed.append((exp, r))
+            parsed.sort(key=lambda x: x[0])
+            today = date.today()
+            for exp, r in parsed:
+                if exp >= today:
+                    val = r.get("lastPrice")
+                    if val is not None:
+                        logger.info(f"NSE_LTP_OK symbol=NIFTY_FUT source=derivative price={float(val)} expiry={exp}")
+                        return float(val)
+            logger.warning(f"NSE_DERIV_BAD_DATA symbol=NIFTY futidx={len(futs)}")
+        else:
+            logger.warning(f"NSE_DERIV_BAD_DATA symbol=NIFTY data_keys=None")
+    except Exception as e:
+        logger.error(f"NSE_DERIV_EXCEPTION symbol=NIFTY error={e}")
     return fetch_nifty_ltp()
 
 def nifty_20d_low():
@@ -404,6 +519,51 @@ def get_capital():
     except:
         pass
     return 100000.0
+
+def normalize_signal(sig):
+    """Normalize a signal dict from any writer to the dashboard's expected shape.
+
+    Expected keys: symbol, entry, sl, target, timestamp, type ('long'/'short'), strategy.
+    Legacy writers use stock/entry_price/sl_price/target_price/time and
+    type values like 'SHORT (intraday)'.
+    """
+    if not isinstance(sig, dict):
+        return None
+    out = dict(sig)
+
+    out["symbol"] = out.get("symbol") or out.get("stock")
+    out["entry"] = out.get("entry") if out.get("entry") is not None else out.get("entry_price")
+    out["sl"] = out.get("sl") if out.get("sl") is not None else out.get("sl_price")
+    out["target"] = out.get("target") if out.get("target") is not None else out.get("target_price")
+    out["timestamp"] = out.get("timestamp") or out.get("time") or out.get("fired_at")
+
+    # Map legacy strategy labels to the dashboard's canonical strategy ids so the
+    # same stock from either writer dedupes to one row.
+    legacy_strategies = {
+        "20D Low Breakdown": "short_20d_low_breakdown",
+        "BB Mid Reclaim": "long_bb_reclaim",
+    }
+    out["strategy"] = legacy_strategies.get(out.get("strategy"), out.get("strategy"))
+
+    raw_type = str(out.get("type") or out.get("signal_type") or "").upper()
+    if "SHORT" in raw_type:
+        out["type"] = "short"
+    elif "LONG" in raw_type:
+        out["type"] = "long"
+    else:
+        out["type"] = "short"
+
+    # Legacy charges use 'estimated_total'; the frontend reads charges.total.
+    charges = out.get("charges")
+    if isinstance(charges, dict):
+        charges = dict(charges)
+        if "total" not in charges:
+            charges["total"] = charges.get("estimated_total", 0)
+        out["charges"] = charges
+
+    if not out.get("symbol") or out.get("entry") is None:
+        return None
+    return out
 
 # ── Signal checkers (all 3 strategies) ──────────────────────────────────
 
@@ -624,14 +784,25 @@ class Collector(threading.Thread):
                 now = datetime.now()
                 elapsed = 0.0  # initialized early; updated at cycle end
 
+                self._cleanup_old_files(now)
+
                 if now.weekday() >= 5:
+                    STATE.update(collector_running=False, nse_ltp_status="market_closed_weekend")
+                    logger.info("Market closed: weekend.")
                     time.sleep(60)
                     continue
-                if now.hour < 9 or now.hour >= 15 or (now.hour == 15 and now.minute > 30):
-                    time.sleep(60)
-                    continue
+                if now.hour < 9 or (now.hour == 15 and now.minute > 30) or now.hour > 15:
+                    STATE.update(collector_running=False, nse_ltp_status="market_closed_after_hours")
+                    logger.info("Market closed: after 15:30 IST.")
+                    # Auto-resume when approaching/open: if running=True and hour==9 and minute>=15, break out to collect
+                    if STATE.running and now.hour == 9 and now.minute >= 15:
+                        logger.info("Auto-resume at market open (9:15).")
+                    else:
+                        time.sleep(60)
+                        continue
 
                 nifty_price = fetch_nifty_ltp() or fetch_nifty_fut_ltp()
+                nifty_source = "live" if nifty_price else "delayed"
                 # Fallback: if NSE is down, use yfinance for Nifty price
                 if not nifty_price:
                     try:
@@ -658,6 +829,7 @@ class Collector(threading.Thread):
 
                 self.state.update(
                     nifty_price=nifty_price,
+                    nifty_source=nifty_source,
                     nifty_sma20=round(nifty_sma20, 2) if nifty_sma20 and nifty_sma20 == nifty_sma20 else None,
                     last_update=now,
                     collector_running=True,
@@ -709,6 +881,15 @@ class Collector(threading.Thread):
                     f.write(json.dumps(snapshot) + "\n")
 
                 signals = run_strategy_checks(self.state)
+
+                # Merge newly detected signals into active_signals so the frontend
+                # (which reads state.active_signals) sees them live.
+                if signals:
+                    merged = {f"{s['strategy']}_{s['symbol']}": s for s in self.state.active_signals}
+                    for sig in signals:
+                        merged[f"{sig['strategy']}_{sig['symbol']}"] = sig
+                    self.state.active_signals = list(merged.values())
+
                 signal_file = SIGNALS_DIR / f"signals_live_{state_str}.json"
                 existing = {}
                 if signal_file.exists():
@@ -736,6 +917,21 @@ class Collector(threading.Thread):
             except Exception as e:
                 logger.error(f"Collector cycle error: {e}")
                 time.sleep(10)
+
+    def _cleanup_old_files(self, now):
+        """Delete captured data/signal/state files older than RETENTION_DAYS."""
+        cutoff = now.date() - timedelta(days=RETENTION_DAYS)
+        for directory, pattern in ((DATA_DIR, "*.jsonl"),
+                                   (SIGNALS_DIR, "signals_live_*.json"),
+                                   (STATES_DIR, "states_*.json")):
+            for f in directory.glob(pattern):
+                try:
+                    file_date = datetime.strptime(f.stem.split("_")[-1], "%Y-%m-%d").date()
+                    if file_date < cutoff:
+                        f.unlink()
+                        logger.info(f"Cleaned up old file: {f.name}")
+                except Exception:
+                    pass
 
     def stop(self):
         self.active = False
@@ -847,6 +1043,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 logger.info("Collector started via /api/start")
                 self._send_json(200, {"status": "started", "running": True})
             return
+        elif path == "/api/reload":
+            import importlib
+            import dashboard as d
+            importlib.reload(d)
+            logger.info("Module reloaded via /api/reload")
+            self._send_json(200, {"reloaded": True})
+            return
         elif path == "/api/stop":
             if STATE.running:
                 STATE.running = False
@@ -921,20 +1124,32 @@ def main():
     STATE.collector_running = False
     logger.info("Dashboard started. Collector not started - use Start button to begin.")
 
-    # Load today's signals from disk into active_signals
+    # Load today's signals from disk into active_signals.
+    # The dashboard writes to signals/dashboard/; the legacy writers (intraday.py,
+    # scan_intraday.py) write to signals/ with a different schema — read both and
+    # normalize, without modifying the other writer's file.
     try:
         today_str = datetime.now().strftime("%Y-%m-%d")
-        signal_file = SIGNALS_DIR / f"signals_live_{today_str}.json"
-        if signal_file.exists():
-            with open(signal_file, "r", encoding="utf-8") as f:
-                signals = json.load(f)
-            if isinstance(signals, dict):
-                STATE.active_signals = list(signals.values())
-            elif isinstance(signals, list):
-                STATE.active_signals = signals
-            logger.debug(f"Loaded {len(STATE.active_signals)} signals from {signal_file.name}")
+        loaded = {}
+        for directory in (SIGNALS_DIR, SIGNALS_DIR.parent):
+            signal_file = directory / f"signals_live_{today_str}.json"
+            if not signal_file.exists():
+                continue
+            try:
+                with open(signal_file, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+            except Exception as e:
+                logger.warning(f"Could not read {signal_file.name}: {e}")
+                continue
+            items = list(raw.values()) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
+            for item in items:
+                norm = normalize_signal(item)
+                if norm:
+                    loaded[f"{norm['strategy']}_{norm['symbol']}"] = norm
+        STATE.active_signals = list(loaded.values())
+        logger.info(f"Loaded {len(STATE.active_signals)} signals from today's signal files")
     except Exception as e:
-        logger.debug(f"Failed to load today's signals: {e}")
+        logger.warning(f"Failed to load today's signals: {e}")
 
     try:
         while True:

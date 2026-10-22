@@ -169,46 +169,24 @@ def fetch_live_price(nlive, symbol):
         return None
 
 def fetch_live_nifty(nlive):
+    """Get NIFTY 50 spot index price.
+
+    NSELive has no `index_quote`; the index quote is `live_index`, which returns
+    {"data": [ ...rows... ], ...} with each row carrying `identifier` + `lastPrice`.
+    """
     try:
-        quote = nlive.index_quote('NIFTY 50')
-        if quote:
-            if isinstance(quote, dict):
-                keys_to_try = [
-                    ('tradeInfo', 'lastPrice'),
-                    ('lastPrice',),
-                    ('priceInfo', 'lastPrice'),
-                ]
-                for key_path in keys_to_try:
-                    val = quote
-                    for k in key_path:
-                        if isinstance(val, dict) and k in val:
-                            val = val[k]
-                        else:
-                            val = None
-                            break
-                    if val is not None:
-                        return float(val)
-
-                if 'data' in quote and isinstance(quote['data'], list) and len(quote['data']) > 0:
-                    item = quote['data'][0]
-                    if isinstance(item, dict) and 'lastPrice' in item:
-                        return float(item['lastPrice'])
-            elif isinstance(quote, list) and len(quote) > 0:
-                item = quote[0]
-                if isinstance(item, dict) and 'lastPrice' in item:
-                    return float(item['lastPrice'])
-
-            try:
-                quote2 = nlive.stock_quote('NIFTY 50')
-                if quote2 and isinstance(quote2, dict):
-                    if 'tradeInfo' in quote2 and 'lastPrice' in quote2['tradeInfo']:
-                        return float(quote2['tradeInfo']['lastPrice'])
-                    if 'lastPrice' in quote2:
-                        return float(quote2['lastPrice'])
-            except Exception:
-                pass
+        quote = nlive.live_index('NIFTY 50')
+        rows = (quote or {}).get('data') or []
+        for row in rows:
+            if isinstance(row, dict) and row.get('identifier') == 'NIFTY 50':
+                if row.get('lastPrice') is not None:
+                    return float(row['lastPrice'])
+                break
+        if rows and isinstance(rows[0], dict) and rows[0].get('lastPrice') is not None:
+            return float(rows[0]['lastPrice'])
         return None
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Live Nifty failed: {e}")
         return None
 
 def fetch_nifty_daily(hist):
@@ -350,6 +328,14 @@ def run_combined():
         except Exception:
             pass
 
+    # Previous trading day's close per symbol — the EOD analyzer needs it for gap_pct.
+    # Fetched once at startup; the daily close does not change during the session.
+    prev_closes = {}
+    for symbol in WATCHLIST:
+        ydata = fetch_historical(hist_obj, symbol, days=30)
+        if ydata is not None and len(ydata) > 0:
+            prev_closes[symbol] = float(ydata.iloc[-1]['close'])
+
     nifty_close, nifty_sma20, nifty_bullish = fetch_nifty_daily(hist_obj)
     nifty_regime = "BULLISH" if nifty_bullish else "BEARISH"
 
@@ -362,6 +348,9 @@ def run_combined():
                 existing_signals = json.load(f)
         except Exception:
             pass
+        # dashboard.py writes a dict keyed by "{strategy}_{symbol}"; this file is a list.
+        if isinstance(existing_signals, dict):
+            existing_signals = list(existing_signals.values())
 
     samples_collected = 0
 
@@ -419,6 +408,7 @@ def run_combined():
                     "intraday_high": round(day_high, 2),
                     "intraday_low": round(day_low, 2),
                     "nifty_ltp": round(nifty_ltp, 2) if nifty_ltp is not None else None,
+                    "prev_close": prev_closes.get(symbol),
                 }
                 records.append(record)
 

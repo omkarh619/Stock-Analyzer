@@ -1,0 +1,2 @@
+2026-10-21 11:24:14,617 [WARNING] Live Nifty failed: boom
+2026-10-21 11:24:14,617 [WARNING] Live Nifty failed: 'Bad2' object has no attribute 'live_index'

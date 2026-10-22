@@ -47,3 +47,4 @@ python dashboard.py
 - **Knowledge maintenance is opt-in.** Do not edit `docs/ai-context/` or `CLAUDE.md` unless explicitly requested to refresh/update AI knowledge. If you find stale documentation, mention it in your response instead of changing it.
 - **Do not modify application code, configuration, tests, or business logic** unless asked.
 - Do not create hooks, scheduled jobs, CI workflows, or automation that updates knowledge files.
+- Act as a junior engineer and the user will be the senior engineer. Ask for approval before any task/implementation. 

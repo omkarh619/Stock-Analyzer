@@ -18,7 +18,9 @@ import numpy as np
 PROJECT_DIR = Path(r"D:\OpenCode\Stock\Stock Analyzer")
 CONFIG_FILE = PROJECT_DIR / "config.yaml"
 DATA_DIR = PROJECT_DIR / "data" / "intraday"
+DASHBOARD_DATA_DIR = PROJECT_DIR / "data" / "dashboard"
 SIGNALS_DIR = PROJECT_DIR / "signals"
+DASHBOARD_SIGNALS_DIR = PROJECT_DIR / "signals" / "dashboard"
 REPORTS_DIR = PROJECT_DIR / "reports"
 LOG_DIR = PROJECT_DIR / "logs"
 
@@ -43,32 +45,86 @@ def load_config():
         return yaml.safe_load(f)
 
 
-def load_intraday_data(target_date=None):
-    """Load intraday JSONL data for a given date into a DataFrame."""
-    if target_date is None:
-        target_date = date.today()
-    date_str = target_date.strftime('%Y-%m-%d')
-    data_file = DATA_DIR / f"{date_str}.jsonl"
+def _expand_snapshot(snapshot, tracker):
+    """Convert a dashboard snapshot row into per-symbol rows.
 
-    if not data_file.exists():
-        logger.warning(f"No intraday data found for {date_str}")
-        return None, []
+    dashboard.py writes one row per poll cycle: {"time", "nifty", "stocks": {...}}.
+    intraday.py writes one row per stock per cycle. This normalises the former
+    into the latter's shape so the rest of the analyzer sees one schema.
 
-    records = []
-    with open(data_file, 'r', encoding='utf-8') as f:
+    The dashboard stores the current tick as high/low, so the running day range
+    is tracked here instead (same semantics as intraday.py's intraday_tracker).
+    """
+    ts_raw = snapshot.get('time')
+    if not ts_raw:
+        return []
+    nifty = snapshot.get('nifty')
+    rows = []
+    for symbol, d in (snapshot.get('stocks') or {}).items():
+        price = d.get('price')
+        if price is None:
+            continue
+        if symbol not in tracker:
+            tracker[symbol] = {'high': price, 'low': price}
+        else:
+            tracker[symbol]['high'] = max(tracker[symbol]['high'], price)
+            tracker[symbol]['low'] = min(tracker[symbol]['low'], price)
+        rows.append({
+            "ts": ts_raw.replace(' ', 'T') + "+05:30",
+            "symbol": symbol,
+            "ltp": price,
+            "intraday_high": tracker[symbol]['high'],
+            "intraday_low": tracker[symbol]['low'],
+            "nifty_ltp": nifty,
+        })
+    return rows
+
+
+def _read_jsonl(path, records, tracker):
+    """Append rows from one JSONL file to `records`, expanding dashboard snapshots."""
+    with open(path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if line:
                 try:
-                    records.append(json.loads(line))
+                    rec = json.loads(line)
                 except:
-                    pass
+                    continue
+                if 'symbol' in rec:
+                    records.append(rec)
+                elif 'stocks' in rec:
+                    records.extend(_expand_snapshot(rec, tracker))
+
+
+def load_intraday_data(target_date=None):
+    """Load intraday JSONL data for a given date into a DataFrame.
+
+    Two writers produce intraday data, each in its own directory:
+      data/intraday/   - intraday.py / scan_intraday.py (one row per stock per cycle)
+      data/dashboard/  - dashboard.py                  (one snapshot per cycle)
+    Both are read and merged; the row schema is used as-is, the snapshot schema
+    is expanded into the same shape.
+    """
+    if target_date is None:
+        target_date = date.today()
+    date_str = target_date.strftime('%Y-%m-%d')
+
+    data_files = [d / f"{date_str}.jsonl" for d in (DATA_DIR, DASHBOARD_DATA_DIR)]
+    data_files = [f for f in data_files if f.exists()]
+    if not data_files:
+        logger.warning(f"No intraday data found for {date_str}")
+        return None, []
+
+    records = []
+    tracker = {}
+    for data_file in data_files:
+        _read_jsonl(data_file, records, tracker)
 
     if not records:
         return None, []
 
     df = pd.DataFrame(records)
-    df['ts'] = pd.to_datetime(df['ts'])
+    df['ts'] = pd.to_datetime(df['ts'], format='ISO8601')
     df = df.sort_values('ts').reset_index(drop=True)
 
     # Pivot to get per-stock time series
@@ -76,20 +132,73 @@ def load_intraday_data(target_date=None):
     return df, stocks
 
 
-def load_today_signals():
-    """Load today's intraday signals from scan_intraday output."""
-    today_str = date.today().strftime('%Y%m%d')
-    signals_file = SIGNALS_DIR / f"signals_live_{today_str}.json"
+def _normalize_signal(sig):
+    """Normalise a signal dict to the keys the analyzer expects.
 
-    if not signals_file.exists():
-        return []
+    Three writers exist with three shapes:
+      scan_intraday.py: entry_price / sl_price / target_price / stock / type
+      intraday.py:      entry / sl / target / symbol / signal_type
+      dashboard.py:     entry / sl / target / symbol / type
 
-    try:
-        with open(signals_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except:
-        return []
+    The type is canonicalised to start with LONG/SHORT because the outcome
+    simulation branches on it — dashboard.py writes lowercase "long"/"short".
+    """
+    raw_type = sig.get('type') or sig.get('signal_type') or ''
+    type_str = str(raw_type).upper()
+    if type_str.startswith('LONG'):
+        type_str = 'LONG'
+    elif type_str.startswith('SHORT'):
+        type_str = 'SHORT'
+    return {
+        'stock': sig.get('stock') or sig.get('symbol') or '',
+        'type': type_str,
+        'strategy': sig.get('strategy', ''),
+        'time': sig.get('time') or sig.get('fired_at') or sig.get('timestamp') or '',
+        'entry': sig.get('entry_price', sig.get('entry')),
+        'target': sig.get('target_price', sig.get('target')),
+        'sl': sig.get('sl_price', sig.get('sl')),
+    }
+
+
+def load_today_signals(target_date=None):
+    """Load intraday signals for a given date from scan_intraday / intraday / dashboard output.
+
+    Both writers are read and merged - intraday.py writes a list, dashboard.py writes
+    a dict keyed by "{strategy}_{symbol}". A day where both fired keeps both sets.
+    """
+    if target_date is None:
+        target_date = date.today()
+    date_str = target_date.strftime('%Y-%m-%d')
+    candidates = [
+        SIGNALS_DIR / f"signals_live_{date_str}.json",
+        DASHBOARD_SIGNALS_DIR / f"signals_live_{date_str}.json",
+    ]
+
+    merged = []
+    seen = set()
+    for signals_file in candidates:
+        if not signals_file.exists():
+            continue
+        try:
+            with open(signals_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except:
+            continue
+        if isinstance(data, dict):
+            data = list(data.values())
+        if not isinstance(data, list):
+            continue
+        for sig in data:
+            if not isinstance(sig, dict):
+                continue
+            norm = _normalize_signal(sig)
+            # Dedup on the fields that identify a distinct firing
+            key = (norm['stock'], norm['type'], norm['time'], norm['strategy'])
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(norm)
+    return merged
 
 
 def load_yesterday_daily_signals():
@@ -166,10 +275,13 @@ def evaluate_signal_outcome(symbol, signal, df):
     if sd.empty:
         return {"status": "no_data"}
 
-    entry = signal.get('entry_price')
-    target = signal.get('target_price')
-    sl = signal.get('sl_price')
+    entry = signal.get('entry')
+    target = signal.get('target')
+    sl = signal.get('sl')
     sig_type = signal.get('type', '')
+
+    if entry is None or target is None or sl is None:
+        return {"status": "incomplete_signal"}
 
     ltp_series = sd['ltp'].dropna()
     if ltp_series.empty:
@@ -257,9 +369,9 @@ def analyze_signals(signals, df):
             "type": sig.get('type', ''),
             "strategy": sig.get('strategy', ''),
             "time_fired": sig.get('time', ''),
-            "entry": sig.get('entry_price'),
-            "target": sig.get('target_price'),
-            "sl": sig.get('sl_price'),
+            "entry": sig.get('entry'),
+            "target": sig.get('target'),
+            "sl": sig.get('sl'),
             "outcome": outcome.get('status', 'unknown'),
             "final_ltp": outcome.get('final_ltp'),
             "pnl_pct": outcome.get('pnl_pct'),
@@ -286,7 +398,7 @@ def generate_report(market_summary, signal_results, yesterday_daily):
             "hit_sl": sum(1 for r in signal_results if r['outcome'] == 'HIT_SL'),
             "reversed": sum(1 for r in signal_results if r['outcome'] == 'REVERSED'),
             "open_at_close": sum(1 for r in signal_results if r['outcome'] == 'OPEN_AT_CLOSE'),
-            "no_data": sum(1 for r in signal_results if r['outcome'] in ('no_data', 'unknown')),
+            "no_data": sum(1 for r in signal_results if r['outcome'] in ('no_data', 'unknown', 'incomplete_signal')),
         },
         "yesterday_daily_signals": yesterday_daily,
     }
@@ -384,7 +496,7 @@ def main():
 
     # Load data
     df, stocks = load_intraday_data(target_date)
-    signals = load_today_signals() if target_date == date.today() else []
+    signals = load_today_signals(target_date)
     yesterday_daily = load_yesterday_daily_signals()
 
     if df is None:

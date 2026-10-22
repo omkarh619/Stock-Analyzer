@@ -66,11 +66,11 @@ inst_count = html.count("instrument-card")
 check(f"strategy-card-main occurrences: {strat_count}", strat_count >= 3)
 check(f"instrument-card occurrences: {inst_count}", inst_count >= 1)
 
-# 5. Nifty in API (with yfinance fallback)
+# 5. Nifty in API (live from NSE, 'delayed' if yfinance fallback was used)
 nf = d.get("nifty", {})
 check("Nifty price present", nf.get("price") is not None)
 check("Nifty has source field", "source" in nf)
-check(f"Nifty source is 'delayed' (yfinance fallback)", nf.get("source") == "delayed")
+check(f"Nifty source is 'live' or 'delayed'", nf.get("source") in ("live", "delayed"))
 
 # 6. Collector status
 check("Collector running", d.get("collector_running") == True)

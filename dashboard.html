@@ -944,6 +944,9 @@
 </style>
 </head>
 <body>
+<div id="market-closed-banner" style="background:#b91c1c;padding:8px 16px;text-align:center;color:#fff;font-family:monospace;font-weight:600;max-width:100%;box-sizing:border-box;">MARKET CLOSED — Data collection pauses. Next open: 9:15 IST (countdown below).</div>
+<div id="market-timer" style="background:#0a0e17;padding:6px 16px;text-align:center;color:#f59e0b;font-family:monospace;font-size:13px;border-bottom:1px solid #2a4a7a;">Next collection in <span id="countdown-hms">00:00:00</span></div>
+
 
 <!-- ═══ TOP BAR ═══ -->
 <div class="topbar">
@@ -1222,8 +1225,9 @@ function regimeClass(regime) {
 }
 
 function directionClass(dir) {
-  if (dir === 'LONG') return 'long';
-  if (dir === 'SHORT') return 'short';
+  const d = String(dir || '').toUpperCase();
+  if (d === 'LONG') return 'long';
+  if (d === 'SHORT') return 'short';
   return 'both';
 }
 
@@ -1294,11 +1298,16 @@ function renderStats(s) {
     { label: 'Market Regime', value: (s.nifty && s.nifty.regime) || 'UNKNOWN', cls: 'accent', sub: (s.nifty && s.nifty.price) ? fmtMoney(s.nifty.price) : '' },
     { label: 'Nifty SMA20', value: (s.nifty && s.nifty.sma20) ? fmtMoney(s.nifty.sma20) : '--', cls: 'blue', sub: 'trend filter' },
     { label: 'Watchlist', value: (s.symbols || []).length, cls: 'amber', sub: 'stocks monitored' },
-    { label: 'Collector', value: s.running ? 'RUNNING' : 'STOPPED', cls: s.running ? 'green' : 'red', sub: s.running ? 'live polling' : 'tap Start' },
+    { label: 'Collector', value: s.running ? (s.nse_ltp_status==='market_closed_after_hours' ? 'PAUSED' : 'RUNNING') : 'STOPPED', cls: s.running ? (s.nse_ltp_status==='market_closed_after_hours' ? 'amber' : 'green') : 'red', sub: s.running ? (s.nse_ltp_status==='market_closed_after_hours' ? 'Market closed' : 'live polling') : 'tap Start' },
     { label: 'NSE API', value: (s.nse_ltp_status || 'unknown') === 'working' ? '🟢 OK' : (s.nse_ltp_status || 'unknown') === 'partial' ? '🟡 Partial' : '🔴 Fail', cls: (s.nse_ltp_status || '') === 'working' ? 'green' : 'red', sub: 'live price feed' },
     { label: 'Samples Today', value: s.data_samples_today || 0, cls: 'blue', sub: 'price points collected' },
     { label: 'NSE Status', value: (s.nse_ltp_status || 'unknown') === 'working' ? '🟢 Connected' : (s.nse_ltp_status || 'unknown') === 'partial' ? '🟡 Partial' : '🔴 Down', cls: (s.nse_ltp_status || '') === 'working' ? 'green' : 'red', sub: 'live price feed' },
   ];
+
+  var banner = document.getElementById('market-closed-banner');
+  var timer = document.getElementById('market-timer');
+  if (banner) banner.style.display = (s.nse_ltp_status === 'market_closed_after_hours') ? 'block' : 'none';
+  if (timer) timer.style.display = (s.nse_ltp_status === 'market_closed_after_hours') ? 'block' : 'none';
 
   document.getElementById('statsRow').innerHTML = cards.map(c => `
     <div class="stat-card ${c.cls}">
@@ -1350,7 +1359,7 @@ function renderSignals(s) {
 
     return `
       <tr class="signal-row ${isNew ? 'new-signal' : ''}" onclick="openChart('${sig.symbol}', '${sig.strategy}', ${JSON.stringify(sig).replace(/'/g, '&apos;')})" style="cursor:pointer">
-        <td><span class="signal-tag ${directionClass(sig.type || (sig.direction === 'LONG' ? 'long' : 'short'))}">${sig.type || (sig.direction === 'LONG' ? 'LONG' : 'SHORT')}</span></td>
+        <td><span class="signal-tag ${directionClass(sig.type || sig.direction)}">${String(sig.type || sig.direction || '').toUpperCase()}</span></td>
         <td><span class="signal-strategy">${sig.strategy || ''}</span></td>
         <td><span class="signal-stock">${sig.symbol}</span></td>
         <td><span class="price-display">${fmtMoney(sig.entry)}</span></td>
@@ -1841,6 +1850,17 @@ polling = setInterval(refresh, 5000);
 window.addEventListener('beforeunload', () => {
   if (polling) clearInterval(polling);
 });
+</script>
+
+</div>
+<button onclick="location.reload()" style="padding:6px 14px;background:#0ea5e9;color:#fff;border:none;border-radius:4px;cursor:pointer;font-family:inherit;">Refresh / Override</button>
+<div id="debug-panel" style="border:1px solid #555;padding:8px;margin-top:8px;font-family:monospace;font-size:11px;max-height:120px;overflow-y:auto;background:#111;color:#0f0;"><b>DEBUG PANEL</b> — run with STOCK_DEBUG=1 to see FETCH_START / FETCH_OK / FETCH_FAIL / NSE_LTP_OK / NSE_LTP_FAIL in logs/dashboard_YYYYMMDD.log</div>
+<script>
+setInterval(function(){
+  var d = new Date(); var target = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9, 15, 0); if(d>=target) target = new Date(target.getTime()+86400000); // today 9:15 if future, else tomorrow
+  var diff = Math.max(0, Math.min(target-d, 86400000-1)); var h=Math.floor(diff/3600000); var m=Math.floor((diff%3600000)/60000); var s=Math.floor((diff%60000)/1000);
+  var el = document.getElementById('countdown-hms'); if(el) el.textContent = String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}, 1000);
 </script>
 </body>
 </html>
