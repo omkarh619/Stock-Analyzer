@@ -1228,6 +1228,7 @@ function directionClass(dir) {
   const d = String(dir || '').toUpperCase();
   if (d === 'LONG') return 'long';
   if (d === 'SHORT') return 'short';
+  if (d === 'DIRECTIONAL' || d === 'NEUTRAL') return 'both';
   return 'both';
 }
 

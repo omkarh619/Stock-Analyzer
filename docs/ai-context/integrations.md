@@ -9,6 +9,9 @@ The system depends on **three external data sources** for market prices and hist
 | `jugaad-data` | Historical OHLCV for stocks & Nifty (primary) | `config.yaml` → `data.provider` | Verified from config.yaml; underlying package not in repo |
 | `yfinance` (via `nsepython`) | Live LTP fetch fallback | `intraday.py`, `dashboard.py` | Primary live source; NSE API direct also used |
 | Yfinance directly (`^NSEI`) | Fallback when `nsepython` unavailable | `fetch_nifty_ltp()`, `fetch_nifty_fut_ltp()` | Module-level imports inside functions |
+| NSE option-chain-v3 (public JSON API) | NIFTY option chain (LTP, IV, OI, volume) | `dashboard.py` `fetch_option_chain()` | Verified working; `expiry` param required |
+| NSE option-chain-contract-info | Expiry date discovery | `dashboard.py` `_option_chain_expiries()` | Verified working |
+| Yfinance `^INDIAVIX` | IV Rank source (90-day percentile) | `dashboard.py` `_iv_rank()` | Verified; falls back to 50.0 |
 
 ## Data Providers
 
@@ -58,7 +61,11 @@ The charges calculation is **broker-agnostic in structure** but reflects Zerodha
 
 Reference files:
 - `scan_daily.py` line 87
-- `dashboard.py` line 380
+- `dashboard.py` line 1166
+
+### Option legs (Phase 2)
+
+Option structures are charged **per leg** by `dashboard.py` `_option_charges(legs, lot_size)` — each leg is a separate order, so the ₹20 brokerage cap applies per leg, and STT is charged only on sell-side legs. The breakdown keys are `brokerage`, `stt`, `exchange_transaction`, `stamp_duty`, `sebi_turnover`, `gst`, plus `total`.
 
 **Important**: The breakdown is hardcoded values matching Zerodha MIS rates. This is documentation-only accuracy — verify against actual broker quotes before acting. Never trust exact figures from static docs for live trades.
 

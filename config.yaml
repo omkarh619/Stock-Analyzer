@@ -42,6 +42,7 @@ strategies:
     description: "Close crosses above 20 SMA (BB middle) after testing below it. Nifty must be above 20 SMA."
     enabled: true
     direction: "LONG"
+    weight: 8                 # strategy weight for priority scoring
     entry_rules:
       - condition: "close > bb_mid * 1.005"
         description: "Today's close crosses above BB middle by at least 0.5%"
@@ -118,12 +119,169 @@ strategies:
       target_pct: 2.5
       sl_pct: 3.5
 
+  # ── Option Strategies (Phase 2) ───────────────────────────────
+  # Defined-risk option trades on NIFTY. Entry/SL/Target are expressed
+  # against the *spread* (net premium), not a percentage of spot.
+  # leg_width: strike gap between the two legs (in index points)
+  # qty_est: number of lots (lot size 25 for NIFTY options)
+  option_strategies:
+    bull_call_spread:
+      name: "Bull Call Spread"
+      description: "Buy OTM CE, sell deeper OTM CE. Defined max loss, defined max profit."
+      enabled: true
+      direction: "LONG"
+      weight: 15                # strategy weight for priority scoring
+      leg_width: 500            # strike gap between long and short CE
+      otm_points: 200           # how far OTM the long leg starts
+      qty_est: 5                # lots
+      max_loss_pct: 0.015       # risk 1.5% of capital on the spread (sizing)
+      sl_pct: 0.5               # DEBIT: stop at 50% of premium paid
+      target_pct: 0.5           # DEBIT: exit at 50% premium gain
+      params:
+        min_iv_rank: 0.25       # IV Rank floor (fraction 0-1)
+        require_bullish: true
+      entry_rules:
+        - condition: "nifty_regime == bullish"
+          description: "Nifty above 20 SMA (bullish regime)"
+        - condition: "iv_rank >= 25"
+          description: "IV Rank at least 25 (avoid dead premium)"
+      exit_rules:
+        - condition: "target_hit"
+          description: "Spread premium reaches target"
+        - condition: "time_expired"
+          description: "Signal not triggered within validity window"
+
+    bull_put_spread:
+      name: "Bull Put Spread"
+      description: "Buy OTM PT, sell deeper OTM PT. Defined max loss, defined max profit."
+      enabled: true
+      direction: "LONG"
+      weight: 12
+      leg_width: 500
+      otm_points: 200
+      qty_est: 5
+      max_loss_pct: 0.015
+      target_pct: 0.015
+      entry_rules:
+        - condition: "nifty_regime == bullish"
+          description: "Nifty above 20 SMA (bullish regime)"
+        - condition: "iv_rank >= 25"
+          description: "IV Rank at least 25"
+      exit_rules:
+        - condition: "target_hit"
+          description: "Spread premium reaches target"
+        - condition: "time_expired"
+          description: "Signal not triggered within validity window"
+
+    iron_condor:
+      name: "Iron Condor"
+      description: "Sell OTM CE+PT, buy further OTM wings. Neutral volatility, lower expectancy."
+      enabled: true
+      direction: "NEUTRAL"
+      weight: 6
+      leg_width: 500
+      otm_points: 400           # distance of the short legs from ATM
+      wing_width: 200           # distance of the long wings from the short legs
+      qty_est: 5
+      max_loss_pct: 0.015
+      target_pct: 0.015
+      entry_rules:
+        - condition: "iv_rank >= 50"
+          description: "IV Rank at least 50 (sell premium only when rich)"
+        - condition: "nifty_range_15m < 60"
+          description: "Nifty 15-min range under 60 pts (quiet market)"
+      exit_rules:
+        - condition: "target_hit"
+          description: "Condor premium reaches target"
+        - condition: "time_expired"
+          description: "Signal not triggered within validity window"
+
+    straddle:
+      name: "Straddle"
+      description: "Buy ATM CE+PT for a big directional move. Only on high-volatility days."
+      enabled: true
+      direction: "DIRECTIONAL"
+      weight: 15
+      qty_est: 5
+      max_loss_pct: 0.015
+      target_pct: 0.015
+      entry_rules:
+        - condition: "nifty_range_15m > 60"
+          description: "Nifty 15-min range above 60 pts (big move expected)"
+        - condition: "iv_rank <= 70"
+          description: "IV Rank at most 70 (premium still affordable)"
+      exit_rules:
+        - condition: "target_hit"
+          description: "Straddle premium reaches target"
+        - condition: "time_expired"
+          description: "Signal not triggered within validity window"
+
+    strangle:
+      name: "Strangle"
+      description: "Buy OTM CE+PT for a big directional move. Only on high-volatility days."
+      enabled: true
+      direction: "DIRECTIONAL"
+      weight: 12
+      otm_points: 300
+      qty_est: 5
+      max_loss_pct: 0.015
+      target_pct: 0.015
+      entry_rules:
+        - condition: "nifty_range_15m > 60"
+          description: "Nifty 15-min range above 60 pts (big move expected)"
+        - condition: "iv_rank <= 70"
+          description: "IV Rank at most 70 (premium still affordable)"
+      exit_rules:
+        - condition: "target_hit"
+          description: "Strangle premium reaches target"
+        - condition: "time_expired"
+          description: "Signal not triggered within validity window"
+
 # ─── Time cutoff for intraday signals ───────────────────────────
 # Signals after this time are NOT RECOMMENDED for trading
 # Format: "HH:MM" in 24-hour format (e.g., "12:00" = noon)
 # Set to null to disable
 time:
   intraday_cutoff: "12:00"  # Don't recommend new trades after 12:00 PM
+
+# ─── Priority Scoring (Phase 2) ────────────────────────────────
+# Signals are never suppressed — they are ranked by score.
+priority:
+  # Signal strength from IV Rank
+  iv_rank_high: 0.70        # IV Rank > 70%  → +15
+  iv_rank_mid: 0.25         # IV Rank 25-70% → +10 ; below → +5
+  # Time-of-day bonus (IST)
+  time_bonuses:
+    - { start: "09:30", end: "11:00", bonus: 10 }   # opening momentum
+    - { start: "11:00", end: "12:30", bonus: 5 }    # consolidation
+    - { start: "12:30", end: "14:30", bonus: 0 }    # post-lunch range
+    - { start: "14:30", end: "15:00", bonus: -5 }    # pre-close
+  # Volatility bonus from Nifty 15-min range (index points)
+  vol_range_high: 60        # > 60 pts  → +10
+  vol_range_mid: 30         # 30-60 pts → +5 ; below → -5
+  # Day rules
+  thursday_score_factor: 0.60   # Thursday: reduce score by 40%
+  friday_trigger_cutoff: "14:00"
+  preclose_trigger_cutoff: "14:50"
+
+# ─── Signal Validity Windows (Phase 2) ─────────────────────────
+# How long a signal stays actionable after it is generated.
+validity:
+  - { start: "09:15", end: "10:00", valid_until: "12:00" }
+  - { start: "10:00", end: "12:00", valid_until: "13:30" }
+  - { start: "12:00", end: "14:30", valid_until: "16:00" }
+  - { start: "14:30", end: "15:00", valid_until: "15:00" }  # must trigger by 14:50
+
+# ─── Option Chain (Phase 2) ────────────────────────────────────
+options:
+  index: "NIFTY"
+  chain_url: "https://www.nseindia.com/api/option-chain-v3"
+  # The v3 endpoint requires ?type=Indices&symbol=NIFTY&expiry=<DD-Mon-YYYY>.
+  # Expiry dates are discovered at runtime from /api/option-chain-contract-info?symbol=NIFTY
+  contract_info_url: "https://www.nseindia.com/api/option-chain-contract-info"
+  refresh_seconds: 900      # refresh option chain every 15 minutes
+  lot_size: 25
+  expiry: "nearest"         # nearest weekly expiry
 # Zerodha intraday (MIS) charges — approximate, verify with broker
 charges:
   broker: "Zerodha"

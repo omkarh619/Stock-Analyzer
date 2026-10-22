@@ -96,6 +96,30 @@ Functions like `_safe_float()` guard against `NaN` and type errors when reading 
 | Currency: ₹ with decimal (2 places) | Prices and charges | Standard formatting |
 | Executable scripts (.py with shebang) | Repo root | All runnable directly |
 
+## Additional Decisions (Phase 2 Update)
+
+### 8. 8-Strategy Dashboard (3 existing + 5 option)
+The dashboard runs 8 strategies simultaneously: `short_20d_low_breakdown`, `long_bb_reclaim`, `orb`, `bull_call_spread`, `bull_put_spread`, `iron_condor`, `straddle`, `strangle`. Option strategies are defined in `config.yaml` → `strategies.option_strategies`. Their entry/sl/target rules reference defined-risk formulas (e.g., max loss = 1.5% of capital) rather than percentage-based stop loss.
+
+**Direction labels**: the 5 option strategies use four distinct direction labels — `LONG` (bull call / bull put spreads), `DIRECTIONAL` (straddle / strangle), `NEUTRAL` (iron condor) — in addition to the equity strategies' `long` / `short`. `normalize_signal()` maps `LONG` → `long` and `SHORT` → `short` (the frontend's canonical pair) but passes `DIRECTIONAL` / `NEUTRAL` through in lowercase, since both map to the frontend's neutral `both` style.
+
+### 9. Option Chain Polling
+Option chain data is fetched from the NSE public option-chain-v3 endpoint (`https://www.nseindia.com/api/option-chain-v3?type=Indices&symbol=NIFTY&expiry=<DD-Mon-YYYY>`). The `expiry` parameter is required — without it the response is empty. IV is read directly from the endpoint (no manual Black-Scholes). A module-level `_option_chain_cache` (with `ts`) is refreshed every 15 minutes, not per strategy; this avoids redundant NSE calls.
+
+**Expiry discovery**: when no expiry is supplied, `fetch_option_chain()` calls the contract-info endpoint (`/api/option-chain-contract-info?symbol=NIFTY`) and picks the nearest *future* expiry via `_nearest_expiry()`. The chain cache also stores the resolved `expiry` string, which is reused for the option instrument symbol format (`NIFTY27-Oct-202624200CE`).
+
+**IV Rank** comes from INDIAVIX, not from the chain itself: `_iv_rank()` downloads 90 days of `^INDIAVIX` via yfinance and computes the current close's percentile within that range. The chain only carries a single IV snapshot per strike, so it cannot support a rank. Cached 15 minutes. Falls back to 50.0 on failure.
+
+**Nifty 15-minute range** (`nifty_range_15m()`) is derived from the last ~20 rows of today's dashboard snapshot JSONL, not from a separate candle feed.
+
+### 10. Priority Scoring (No Suppression)
+Signals are never suppressed — all 8 strategies generate independently. The priority score (`priority_score`) ranks them. Top 3 are shown prominently; the full list is visible in the Live Signals table. Thursday applies a 40% score reduction; Friday signals must trigger by 14:00; 14:30–15:00 signals must trigger by 14:50.
+
+**Score components** (all from `config.yaml` → `priority`): signal strength from IV Rank (>70 → +15, 25–70 → +10, <25 → +5), time-of-day bonus, strategy weight, and a volatility bonus from the Nifty 15-minute range (>60 pts → +10, 30–60 → +5, below → −5). Thursday multiplies the total by `thursday_score_factor` (0.60).
+
+### 11. Raw vs Mapped Config
+`_map_config()` rebuilds `CFG` into the dashboard's expected shape and **drops** sections it doesn't map (`priority`, `validity`, `options`, and the `option_strategies` sub-block of `strategies`). The raw `config.yaml` contents are therefore kept in a separate module-level `RAW_CFG`, and the option code reads it through three helpers: `_option_config()` (`strategies.option_strategies`), `_priority_config()` (`priority`), `_options_config()` (`options`). Reading `CFG.get("strategies", {})` returns a **list**, not a dict — that is the mapped shape, not a bug.
+
 ## Gaps / Unverified Items
 
 - **`jugaad-data` package API**: Not bundled, package-specific calls assumed. Needs verification if this repo scales.
@@ -113,3 +137,23 @@ Recent git history shows two commits: `db3079f init` (initial commit) and `7c2b5
 **Issue**: Dashboard UI button states not updating when Start/Stop clicked.
 **Root cause**: `dashboard.py` `do_POST()` was missing `/api/stop` endpoint; the `/api/start` handler had unreachable dead code (`return` followed by `self._send_json`).
 **Fix**: Added complete `/api/stop` handler (sets `STATE.running = False`, `COLLECTOR.active = False`) and cleaned unreachable line after `/api/start`. Verified with `grep`. Source: `dashboard.py` lines 838–860 (post-fix).
+
+## Known Issue / Fix Applied — Live Signals Empty
+
+**Issue**: Dashboard Live Signals tab always showed "No active signals" / 0 signals even while signals were being generated.
+
+**Root causes** (three compounding):
+1. No strategy ever appended to `state.active_signals` — strategies returned signals to a local list, the collector wrote them to file, but the frontend reads `state.active_signals`.
+2. Signal files on disk use legacy schemas (`stock`/`entry_price`/`type: "SHORT (intraday)"`) that did not match the dashboard's expected `symbol`/`entry`/`type: "short"` shape.
+3. Market-hours guard stopped the collector at 15:00 instead of 15:30 (`now.hour >= 15` excluded 15:00–15:29).
+
+**Fix**:
+- Added `normalize_signal(sig)` in `dashboard.py` — maps legacy → canonical schema, maps legacy strategy names, derives `type` from `type`/`signal_type`.
+- Collector now merges newly detected signals into `state.active_signals` keyed by `{strategy}_{symbol}`.
+- Startup loader in `main()` reads `signals/signals_live_YYYYMMDD.json` (both `signals/dashboard/` and `signals/`) through `normalize_signal` and seeds `STATE.active_signals`.
+- Market-hours condition changed to `now.hour < 9 or (now.hour == 15 and now.minute > 30) or now.hour > 15`.
+- `dashboard.html` `directionClass()` now maps `"LONG"`/`"SHORT"` to `long`/`short` instead of falling through to `both`.
+
+**Note**: `signal_count` values in the thousands (e.g. 2102 for ORB) are not a counter bug — ORB re-detects on every 60s collector cycle, so the count tracks detections, not unique signals.
+
+**Verified**: `test_dashboard.py` → 80 passed / 0 failed.

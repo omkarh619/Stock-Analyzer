@@ -60,7 +60,8 @@ dashboard.py
   └─ HTTP server on localhost:8899
   └─ serves dashboard.html (UI) + JSON API
   └─ collector thread reuses intraday.py patterns (NSE/yfinance data)
-  └─ 3 live strategies: short_20d_low_breakdown, long_bb_reclaim, orb
+  └─ 3 live strategies: short_20d_low_breakdown, long_bb_reclaim, orb + 5 option strategies (bull_call, bull_put, iron_condor, straddle, strangle) — 8 total
+  └─ option context per cycle: NSE option chain (15-min cache) + IV Rank + Nifty 15-min range → shared ctx for all 5 option checkers
   └─ real-time LTP, price history (200-bar), charts via SVG
 ```
 
@@ -77,8 +78,14 @@ dashboard.py
 |----------|-----------|-----------------|--------------------|--------|
 | BB Mid Reclaim | LONG | Close > BB mid (≥0.5%) after testing below | LTP crosses ≥0.3% above 20-SMA + RSI 40–65 + gap up ≥0.5% | Nifty bullish |
 | 20D Low Breakdown | SHORT | Close < 20-day low | Intraday low ≥0.5% below 20D low + RSI 25–45 + gap down ≥0.5% | Nifty bearish |
+| ORB | long/short | — (live only) | Opening-range breakout | any |
+| Bull Call Spread | LONG | — (live only) | Bullish regime + IV Rank ≥ 25 | Nifty bullish |
+| Bull Put Spread | LONG | — (live only) | Bullish regime + IV Rank ≥ 25 | Nifty bullish |
+| Iron Condor | NEUTRAL | — (live only) | IV Rank ≥ 50 + Nifty 15-min range < 60 | any |
+| Straddle | DIRECTIONAL | — (live only) | Nifty 15-min range > 60 + IV Rank ≤ 70 | any |
+| Strangle | DIRECTIONAL | — (live only) | Nifty 15-min range > 60 + IV Rank ≤ 70 | any |
 
-Intraday variants have tighter filters (see `config.yaml` → `strategies.*.intraday*`).
+Intraday variants have tighter filters (see `config.yaml` → `strategies.*.intraday*`). The 5 option strategies are configured under `config.yaml` → `strategies.option_strategies`.
 
 ## References
 

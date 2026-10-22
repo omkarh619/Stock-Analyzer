@@ -22,7 +22,7 @@
 | `scan_daily.py` | Morning daily scanner. Reads yesterday's close → writes today's signals. Strategies: `bb_reclaim_long`, `breakdown_20d_low`. CLI: `--date YYYY-MM-DD`. |
 | `intraday.py` | Combined 1-min collector + signal generator for market-hours monitoring. Replaces older `scan_intraday.py` + `collect_intraday.py`. Auto-stops at 15:30 IST. |
 | `analyze_eod.py` | Post-market analyzer. Reads intraday data + today's signals → produces `reports/analysis_*.json` + `reports/ai_summary_*.json`. CLI: `--date YYYY-MM-DD`. |
-| `dashboard.py` | Live dashboard server (localhost:8899). Serves `dashboard.html` + JSON API. Runs collector thread with 3 strategies. |
+| `dashboard.py` | Live dashboard server (localhost:8899). Serves `dashboard.html` + JSON API. Runs collector thread with 8 strategies (3 equity + 5 option). |
 | `collect_daily_data.py` | Daily data collection helper (historical, uses yfinance). Lower priority than `intraday.py`. |
 | `collect_intraday.py` | Older intraday collector (largely superseded by `intraday.py` but still present). |
 | `scan_intraday.py` | Older intraday scanner (largely superseded by `intraday.py` but still present). |

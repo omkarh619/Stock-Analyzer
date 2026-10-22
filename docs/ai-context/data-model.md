@@ -81,6 +81,78 @@ Live signals (`signals/signals_live_YYYYMMDD.json`) additionally include fields 
 
 Key differences from daily signals: `type` uses short form ("short"/"long"), strategy uses config name (`short_20d_low_breakdown`), symbol replaces stock, and technical context fields (`stock_20d_low`, `nifty_close`, etc.) are included.
 
+### Canonical Dashboard Signal Schema
+
+`dashboard.py` `normalize_signal(sig)` converts every legacy shape into this form before it reaches `state.active_signals`:
+
+| Field | Source (fallback order) | Notes |
+|-------|--------------------------|-------|
+| `symbol` | `symbol` → `stock` | Required; signals without it are dropped |
+| `entry` | `entry` → `entry_price` | Required; signals without it are dropped |
+| `sl` | `sl` → `sl_price` | |
+| `target` | `target` → `target_price` | |
+| `timestamp` | `timestamp` → `time` → `fired_at` | |
+| `type` | `type` → `signal_type` | Contains "SHORT" → `short`; contains "LONG" → `long`; default `short` |
+| `strategy` | `strategy` | Legacy names mapped: `"20D Low Breakdown"` → `short_20d_low_breakdown`, `"BB Mid Reclaim"` → `long_bb_reclaim` |
+| `charges` | `charges` | Dict; `total` added from `estimated_total` when missing |
+
+`state.active_signals` is a list of these dicts. The frontend's Live Signals table and `chart_data_for` depend on these exact field names.
+
+### Option Signal Fields (Phase 2)
+
+Option strategies add these fields to the canonical shape:
+
+| Field | Meaning |
+|-------|---------|
+| `strike` | Strike price of the reference leg (long leg for spreads, ATM for straddle) |
+| `expiry` | Expiry date (`YYYY-MM-DD`, ISO) |
+| `legs` | List of legs — each `{symbol, side, strike, ltp, qty, iv, oi, volume}` (`side` ∈ `buy`/`sell`) |
+| `priority_score` | Ranking score (see Priority Scoring) |
+| `signal_time` | IST timestamp the signal fired |
+| `status` | `active` / `expired` / `squared` / `executed` |
+| `market_regime` | `bullish` / `bearish` / `neutral` / `unknown` |
+| `iv_rank` | Percentile rank of implied volatility (0–100) |
+| `lots` | Number of option lots traded (1 lot = 25 qty for NIFTY) |
+| `nifty_range_15m` | Nifty high-low range over the last 15 min at signal time |
+| `valid_until` | Latest time the signal remains actionable (from the `validity` config windows) |
+| `max_loss_amount` | Rupee risk if the trade goes to SL |
+| `risk_exceeded` | `true` when even 1 lot exceeds the configured risk budget |
+| `description` | Human-readable leg summary |
+
+The `symbol` field is `"{index}-{expiry}-{strike}"` (e.g. `NIFTY-2026-10-27-24200`), while each leg's `symbol` is the broker-style instrument name (e.g. `NIFTY27-Oct-202624200CE`).
+
+Leg schema, as emitted by `dashboard.py`:
+
+```json
+{
+  "symbol": "NIFTY27-Oct-202624200CE",
+  "side": "buy",
+  "strike": 24200,
+  "ltp": 166.67,
+  "qty": 25,
+  "iv": 14.0,
+  "oi": 1024,
+  "volume": 524
+}
+```
+
+Signals are keyed by `{strategy}_{symbol}` in `signals/signals_live_YYYYMMDD.json`.
+
+## Priority Scoring
+
+```
+priority_score = signal_strength + time_of_day_bonus + strategy_weight + volatility_bonus
+```
+
+| Component | Rule | Value |
+|-----------|------|-------|
+| Signal strength | IV Rank > 70% / 25–70% / < 25% | +15 / +10 / +5 |
+| Time of day | 9:30–11:00 / 11:00–12:30 / 12:30–14:30 / 14:30–15:00 | +10 / +5 / 0 / −5 |
+| Strategy weight | Bull Call Spread, Straddle / Bull Put Spread, 20D Low Breakdown, Strangle / ORB / BB Mid Reclaim / Iron Condor | 15 / 12 / 10 / 8 / 6 |
+| Volatility bonus | Nifty 15-min range > 60 pts / 30–60 / < 30 | +10 / +5 / −5 |
+
+Thursday applies a further 40% reduction to the score (square-off day). Friday signals must be triggered by 14:00; signals from 14:30–15:00 must be triggered by 14:50.
+
 ## Intraday Snapshot Schema (JSONL rows)
 
 Each line in `data/intraday/YYYY-MM-DD.jsonl`:

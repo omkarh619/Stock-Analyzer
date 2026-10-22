@@ -53,6 +53,11 @@ DEFAULT_CONFIG = {
 
 CFG = DEFAULT_CONFIG.copy()
 
+# Raw config.yaml contents. _map_config() rebuilds CFG into the dashboard's
+# expected shape and drops sections it doesn't map (priority, validity,
+# options), so the option strategies read those from here.
+RAW_CFG = {}
+
 def load_config():
     import yaml
     try:
@@ -70,7 +75,8 @@ def load_config():
         logger.warning(f"Could not load config.yaml: {e}. Using defaults.")
         return DEFAULT_CONFIG.copy()
 
-CFG = load_config()
+RAW_CFG = load_config()
+CFG = RAW_CFG
 
 # ── Map config.yaml structure to dashboard expected structure ────────────────
 def _map_config(loaded):
@@ -128,6 +134,15 @@ def _map_config(loaded):
 
 CFG = _map_config(CFG)
 
+def _option_config():
+    return (RAW_CFG.get("strategies", {}) or {}).get("option_strategies", {}) or {}
+
+def _priority_config():
+    return RAW_CFG.get("priority", {}) or {}
+
+def _options_config():
+    return RAW_CFG.get("options", {}) or {}
+
 # ── Strategy definitions ────────────────────────────────────────────────────
 
 STRATEGY_DEFS = {
@@ -168,6 +183,51 @@ STRATEGY_DEFS = {
         },
         "market_confirm": CFG.get("orb", {}).get("market_confirm", False),
         "enabled": CFG.get("orb", {}).get("enabled", True),
+    },
+    "bull_call_spread": {
+        "name": "Bull Call Spread (LONG)",
+        "short": False,
+        "direction": "LONG",
+        "enabled": _option_config().get("bull_call_spread", {}).get("enabled", True),
+        "weight": _option_config().get("bull_call_spread", {}).get("weight", 15),
+        "qty_est": _option_config().get("bull_call_spread", {}).get("qty_est", 5),
+        "min_iv_rank": 25,
+    },
+    "bull_put_spread": {
+        "name": "Bull Put Spread (LONG)",
+        "short": False,
+        "direction": "LONG",
+        "enabled": _option_config().get("bull_put_spread", {}).get("enabled", True),
+        "weight": _option_config().get("bull_put_spread", {}).get("weight", 12),
+        "qty_est": _option_config().get("bull_put_spread", {}).get("qty_est", 5),
+        "min_iv_rank": 25,
+    },
+    "straddle": {
+        "name": "Straddle (DIRECTIONAL)",
+        "short": False,
+        "direction": "DIRECTIONAL",
+        "enabled": _option_config().get("straddle", {}).get("enabled", True),
+        "weight": _option_config().get("straddle", {}).get("weight", 15),
+        "qty_est": _option_config().get("straddle", {}).get("qty_est", 5),
+        "filters": {"min_range_pts": 60, "max_iv_rank": 70},
+    },
+    "strangle": {
+        "name": "Strangle (DIRECTIONAL)",
+        "short": False,
+        "direction": "DIRECTIONAL",
+        "enabled": _option_config().get("strangle", {}).get("enabled", True),
+        "weight": _option_config().get("strangle", {}).get("weight", 12),
+        "qty_est": _option_config().get("strangle", {}).get("qty_est", 5),
+        "filters": {"min_range_pts": 60, "max_iv_rank": 70},
+    },
+    "iron_condor": {
+        "name": "Iron Condor (NEUTRAL)",
+        "short": False,
+        "direction": "NEUTRAL",
+        "enabled": _option_config().get("iron_condor", {}).get("enabled", True),
+        "weight": _option_config().get("iron_condor", {}).get("weight", 6),
+        "qty_est": _option_config().get("iron_condor", {}).get("qty_est", 5),
+        "filters": {"min_iv_rank": 50, "max_range_pts": 60},
     },
 }
 
@@ -263,6 +323,617 @@ class SharedState:
 STATE = SharedState()
 
 # ── NSE data helpers ─────────────────────────────────────────────────────
+
+# ── Option chain helpers (Phase 2 — C1) ──────────────────────────────────
+# Module-level cache: {"ts": datetime, "data": chain, "expiry": "27-Oct-2026"}
+_option_chain_cache = {"ts": None, "data": None, "expiry": None}
+_iv_rank_cache = {"ts": None, "value": None}
+
+NSE_OPTION_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json,text/plain,*/*",
+    "Accept-Encoding": "gzip",
+    "Referer": "https://www.nseindia.com/option-chain",
+    "X-Requested-With": "XMLHttpRequest",
+}
+
+def _nearest_expiry(expiries):
+    """Nearest future expiry date string ('DD-Mon-YYYY') from a list."""
+    today = date.today()
+    future = []
+    for e in expiries or []:
+        parsed = _parse_nse_expiry(e)
+        if parsed and parsed > today:
+            future.append((parsed, str(e)))
+    if not future:
+        return None
+    future.sort(key=lambda x: x[0])
+    return future[0][1]
+
+def fetch_option_chain(symbol="NIFTY", expiry_date=None, force=False):
+    """Fetch the NSE option chain. The v3 endpoint requires an explicit expiry."""
+    opts = _options_config()
+    refresh = int(opts.get("refresh_seconds", 900) or 900)
+    now = datetime.now()
+    if (not force and _option_chain_cache.get("data")
+            and _option_chain_cache.get("ts")
+            and (now - _option_chain_cache["ts"]).total_seconds() < refresh):
+        return _option_chain_cache["data"]
+
+    if expiry_date is None:
+        expiry_date = _nearest_expiry(
+            _option_chain_expiries(symbol)
+        )
+        if not expiry_date:
+            logger.warning("fetch_option_chain: no future expiry found")
+            return _option_chain_cache.get("data")
+
+    url = (f"{opts.get('chain_url', 'https://www.nseindia.com/api/option-chain-v3')}"
+           f"?type=Indices&symbol={symbol}&expiry={expiry_date}")
+    data = fetch_json(url, headers=NSE_OPTION_HEADERS)
+    if data and isinstance(data, dict) and (data.get("records") or {}).get("data"):
+        _option_chain_cache.update({"ts": now, "data": data, "expiry": expiry_date})
+        logger.info(f"fetch_option_chain OK symbol={symbol} expiry={expiry_date} "
+                    f"rows={len(data['records']['data'])}")
+        return data
+    logger.warning(f"fetch_option_chain: empty/invalid response for {url}")
+    return _option_chain_cache.get("data")
+
+def _option_chain_expiries(symbol="NIFTY"):
+    """List of expiry date strings from the contract-info endpoint."""
+    url = (f"{_options_config().get('contract_info_url', 'https://www.nseindia.com/api/option-chain-contract-info')}"
+           f"?symbol={symbol}")
+    data = fetch_json(url, headers=NSE_OPTION_HEADERS)
+    if not data:
+        return []
+    return data.get("expiryDates") or []
+
+def _chain_rows(chain):
+    """Normalize option chain records into [{strike, CE, PE}, ...]."""
+    rows = []
+    for r in ((chain or {}).get("records") or {}).get("data") or []:
+        strike = r.get("strikePrice")
+        if strike is None:
+            continue
+        rows.append({"strike": float(strike), "CE": r.get("CE") or {}, "PE": r.get("PE") or {}})
+    rows.sort(key=lambda x: x["strike"])
+    return rows
+
+def _chain_atm_strike(rows, spot):
+    """Strike closest to spot."""
+    if not rows or not spot:
+        return None
+    return min(rows, key=lambda r: abs(r["strike"] - float(spot)))["strike"]
+
+def _chain_row_at(rows, strike):
+    for r in rows:
+        if abs(r["strike"] - float(strike)) < 0.01:
+            return r
+    return None
+
+def _leg_values(row, side):
+    """Extract LTP/IV/OI/volume for one side of a strike row."""
+    d = (row or {}).get(side) or {}
+    def _f(key):
+        v = d.get(key)
+        try:
+            return float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+    return {
+        "ltp": _f("lastPrice"),
+        "iv": _f("impliedVolatility"),
+        "oi": int(_f("openInterest")),
+        "volume": int(_f("totalTradedVolume")),
+    }
+
+def _option_symbol(strike, side, expiry):
+    """Zerodha-style option symbol, e.g. NIFTY25OCT23650CE."""
+    return f"NIFTY{expiry}{int(strike)}{side}"
+
+def _iv_rank():
+    """IV Rank 0-100: current INDIAVIX percentile vs its own 90-day range.
+
+    The option chain only carries a snapshot, so IV Rank uses INDIAVIX as the
+    volatility series. Cached 15 minutes to avoid repeated downloads.
+    """
+    now = datetime.now()
+    if (_iv_rank_cache.get("value") is not None and _iv_rank_cache.get("ts")
+            and (now - _iv_rank_cache["ts"]).total_seconds() < 900):
+        return _iv_rank_cache["value"]
+    value = 50.0
+    try:
+        import yfinance as yf
+        hist = yf.download("^INDIAVIX", period="90d", interval="1d", progress=False)
+        if hist is not None and not hist.empty:
+            close = hist["Close"].dropna()
+            if len(close) >= 20:
+                lo, hi = float(close.min()), float(close.max())
+                last = float(close.iloc[-1])
+                if hi > lo:
+                    value = max(0.0, min(100.0, (last - lo) / (hi - lo) * 100.0))
+    except Exception as e:
+        logger.debug(f"_iv_rank: yfinance INDIAVIX failed: {e}")
+    value = round(value, 1)
+    _iv_rank_cache.update({"ts": now, "value": value})
+    return value
+
+def nifty_range_15m(state=None):
+    """Nifty high-low range over the last ~15 minutes of captured snapshots."""
+    try:
+        today_str = date.today().strftime("%Y-%m-%d")
+        snap_path = DATA_DIR / f"{today_str}.jsonl"
+        if snap_path.exists():
+            with open(snap_path, "r", encoding="utf-8") as f:
+                lines = [ln for ln in f.read().strip().split("\n") if ln.strip()]
+            values = []
+            for line in lines[-20:]:
+                try:
+                    nifty_val = json.loads(line).get("nifty")
+                except (ValueError, TypeError):
+                    continue
+                if nifty_val is not None:
+                    values.append(float(nifty_val))
+            if len(values) >= 2:
+                return max(values) - min(values)
+    except Exception as e:
+        logger.debug(f"nifty_range_15m: snapshot read failed: {e}")
+    return 0.0
+
+def _tod_bonus(now=None):
+    """Time-of-day bonus from config.priority.time_bonuses."""
+    now = now or datetime.now()
+    hhmm = now.strftime("%H:%M")
+    bonus = 0
+    for window in _priority_config().get("time_bonuses") or []:
+        if str(window.get("start")) <= hhmm < str(window.get("end")):
+            bonus = int(window.get("bonus", 0))
+            break
+    return bonus
+
+def _vol_bonus(range_pts, now=None):
+    """Volatility bonus from the Nifty 15-minute range (index points)."""
+    pc = _priority_config()
+    hi = float(pc.get("vol_range_high", 60) or 60)
+    mid = float(pc.get("vol_range_mid", 30) or 30)
+    if range_pts is None:
+        return 0
+    if range_pts > hi:
+        return 10
+    if range_pts >= mid:
+        return 5
+    return -5
+
+def _trigger_allowed(now=None):
+    """Day rules: Friday cutoff 14:00, pre-close cutoff 14:50."""
+    now = now or datetime.now()
+    pc = _priority_config()
+    hhmm = now.strftime("%H:%M")
+    preclose = str(pc.get("preclose_trigger_cutoff", "14:50"))
+    if hhmm >= preclose:
+        return False, "past pre-close cutoff"
+    if now.weekday() == 4:  # Friday
+        friday_cutoff = str(pc.get("friday_trigger_cutoff", "14:00"))
+        if hhmm >= friday_cutoff:
+            return False, "past Friday trigger cutoff"
+    return True, ""
+
+def _valid_until(now=None):
+    """Signal validity horizon for the current time window."""
+    now = now or datetime.now()
+    hhmm = now.strftime("%H:%M")
+    for window in RAW_CFG.get("validity") or []:
+        if str(window.get("start")) <= hhmm < str(window.get("end")):
+            return str(window.get("valid_until"))
+    return None
+
+def priority_score(iv_rank=50.0, tod_bonus=0, weight=0, vol_bonus=0, now=None):
+    """priority_score = signal_strength + time_of_day_bonus + strategy_weight + volatility_bonus.
+
+    Signal strength is bucketed by IV Rank (>70% → 15, 25-70% → 10, <25% → 5).
+    Thursday scales the total by 0.60 (square-off day).
+    """
+    now = now or datetime.now()
+    if iv_rank > 70:
+        strength = 15
+    elif iv_rank >= 25:
+        strength = 10
+    else:
+        strength = 5
+    score = strength + int(tod_bonus) + int(weight) + int(vol_bonus)
+    if now.weekday() == 3:  # Thursday
+        score *= float(_priority_config().get("thursday_score_factor", 0.60) or 0.60)
+    return round(score, 2)
+
+def _market_regime(state):
+    """bullish / bearish / neutral / unknown from Nifty vs its 20 SMA."""
+    sma = state.nifty_sma20
+    price = state.nifty_price
+    if not sma or not price:
+        return "unknown"
+    if price > sma:
+        return "bullish"
+    if price < sma:
+        return "bearish"
+    return "neutral"
+
+def _option_sizing(max_loss_per_lot, lot_size, max_loss_pct, qty_cap):
+    """Lots to trade, capped so a single trade risks <= max_loss_pct of capital.
+
+    Returns (lots, risk_amount, risk_exceeded). A trade that cannot fit even one
+    lot inside the risk budget is still sized at 1 lot but flagged, so the user
+    sees the real exposure instead of a silently zero position.
+    """
+    capital = get_capital()
+    budget = capital * float(max_loss_pct or 0.015)
+    if max_loss_per_lot <= 0:
+        return 0, 0.0, False
+    lots = int(budget // max_loss_per_lot)
+    exceeded = False
+    if lots < 1:
+        lots = 1
+        exceeded = True
+    if qty_cap:
+        lots = min(lots, int(qty_cap))
+    risk = lots * max_loss_per_lot
+    return lots, round(risk, 2), exceeded or risk > budget
+
+def _option_charges(legs, lot_size):
+    """Round-trip charges for an option structure, summed across both legs.
+
+    Each leg is one order (buy or sell), so brokerage applies per leg and
+    STT is charged on the sell side only.
+    """
+    total = 0.0
+    breakdown = {"brokerage": 0.0, "stt": 0.0, "exchange_transaction": 0.0,
+                 "stamp_duty": 0.0, "sebi_turnover": 0.0, "gst": 0.0}
+    for leg in legs or []:
+        qty = int(leg.get("qty") or lot_size)
+        price = float(leg.get("ltp") or 0.0)
+        side = leg.get("side", "buy")
+        turnover = qty * price
+        brokerage = min(20.0, turnover * 0.0003)
+        stt = turnover * 0.001 if side == "sell" else 0.0
+        exch = turnover * 0.0000325
+        stamp = turnover * 0.00015
+        sebi = turnover * 0.00000001
+        gst = (brokerage + exch) * 0.18
+        breakdown["brokerage"] += brokerage
+        breakdown["stt"] += stt
+        breakdown["exchange_transaction"] += exch
+        breakdown["stamp_duty"] += stamp
+        breakdown["sebi_turnover"] += sebi
+        breakdown["gst"] += gst
+        total += brokerage + stt + exch + stamp + sebi + gst
+    return {k: round(v, 2) for k, v in breakdown.items()} | {"total": round(total, 2)}
+
+def _build_option_signal(state, ctx, strategy, cfg, legs, net_premium, is_credit,
+                         strike, expiry, direction_label, description):
+    """Assemble a canonical option signal dict."""
+    lots, risk_amount, risk_exceeded = _option_sizing(
+        max_loss_per_lot=net_premium * int(_options_config().get("lot_size", 25) or 25),
+        lot_size=int(_options_config().get("lot_size", 25) or 25),
+        max_loss_pct=cfg.get("max_loss_pct", 0.015),
+        qty_cap=cfg.get("qty_est"),
+    )
+    sl_pct = float(cfg.get("sl_pct", 0.5) or 0.5)
+    target_pct = float(cfg.get("target_pct", 0.5) or 0.5)
+    if is_credit:
+        # Credit spread: entry is premium received. Target = keep a share of the
+        # credit; SL = give back sl_pct times the credit received.
+        sl = round(net_premium * (1 + sl_pct), 2)
+        target = round(net_premium * (1 - target_pct), 2)
+    else:
+        # Debit structure: entry is premium paid. Target = gain target_pct;
+        # SL = lose sl_pct of the premium.
+        sl = round(net_premium * (1 - sl_pct), 2)
+        target = round(net_premium * (1 + target_pct), 2)
+
+    lot_size = int(_options_config().get("lot_size", 25) or 25)
+    qty_est = lots * lot_size
+    expiry_iso = None
+    parsed = _parse_nse_expiry(expiry)
+    if parsed:
+        expiry_iso = parsed.isoformat()
+
+    signal = {
+        "type": direction_label,
+        "strategy": strategy,
+        "symbol": f"{ctx.get('index', 'NIFTY')}-{expiry_iso or expiry}-{int(strike)}",
+        "entry": round(net_premium, 2),
+        "sl": sl,
+        "target": target,
+        "sl_pct": round(sl_pct * 100, 2),
+        "target_pct": round(target_pct * 100, 2),
+        "qty_est": qty_est,
+        "lots": lots,
+        "strike": int(strike),
+        "expiry": expiry_iso or expiry,
+        "legs": legs,
+        "description": description,
+        "priority_score": priority_score(
+            iv_rank=ctx["iv_rank"],
+            tod_bonus=ctx["tod_bonus"],
+            weight=cfg.get("weight", 0),
+            vol_bonus=ctx["vol_bonus"],
+            now=ctx["now"],
+        ),
+        "iv_rank": ctx["iv_rank"],
+        "signal_time": ctx["now"].strftime("%H:%M:%S"),
+        "status": "active",
+        "market_regime": ctx["regime"],
+        "nifty_range_15m": round(ctx["range_15m"], 2),
+        "valid_until": ctx.get("valid_until"),
+        "max_loss_amount": risk_amount,
+        "risk_exceeded": risk_exceeded,
+        "timestamp": ctx["now"].strftime("%H:%M:%S"),
+        "charges": _option_charges(legs, lot_size),
+    }
+    return signal
+
+def _option_context(state):
+    """Shared market context for the option strategies (computed once per cycle)."""
+    now = datetime.now()
+    chain = fetch_option_chain(_options_config().get("index", "NIFTY"))
+    rows = _chain_rows(chain)
+    spot = (chain or {}).get("records", {}).get("underlyingValue") or state.nifty_price
+    range_15m = nifty_range_15m(state)
+    allowed, reason = _trigger_allowed(now)
+    return {
+        "now": now,
+        "chain": chain,
+        "rows": rows,
+        "spot": float(spot) if spot else None,
+        "expiry": _option_chain_cache.get("expiry"),
+        "iv_rank": _iv_rank(),
+        "range_15m": range_15m,
+        "regime": _market_regime(state),
+        "tod_bonus": _tod_bonus(now),
+        "vol_bonus": _vol_bonus(range_15m, now),
+        "allowed": allowed,
+        "reason": reason,
+        "valid_until": _valid_until(now),
+        "index": _options_config().get("index", "NIFTY"),
+    }
+
+def _option_signal_enabled(state, strategy):
+    if state.strategy_states.get(strategy, {}).get("enabled") is False:
+        return False
+    return bool(_option_config().get(strategy, {}).get("enabled", True))
+
+def _record_option_signal(state, strategy, signal):
+    signals = [signal]
+    st = state.strategy_states.setdefault(strategy, {})
+    st["last_signal"] = signal
+    st["signal_count"] = st.get("signal_count", 0) + 1
+    return signals
+
+def check_bull_call_spread(state, ctx):
+    """Buy an OTM CE, sell a deeper OTM CE. Bullish regime only."""
+    signals = []
+    strategy = "bull_call_spread"
+    if not _option_signal_enabled(state, strategy):
+        return signals
+    cfg = _option_config().get(strategy, {})
+    if ctx["regime"] != "bullish":
+        return signals
+    if ctx["iv_rank"] < 25:
+        return signals
+    if not ctx["rows"] or not ctx["spot"] or not ctx["expiry"]:
+        return signals
+
+    lot_size = int(_options_config().get("lot_size", 25) or 25)
+    otm = float(cfg.get("otm_points", 200) or 200)
+    width = float(cfg.get("leg_width", 500) or 500)
+    atm = _chain_atm_strike(ctx["rows"], ctx["spot"])
+    if atm is None:
+        return signals
+    long_row = _chain_row_at(ctx["rows"], atm + otm)
+    short_row = _chain_row_at(ctx["rows"], atm + otm + width)
+    if not long_row or not short_row:
+        return signals
+    long_leg = _leg_values(long_row, "CE")
+    short_leg = _leg_values(short_row, "CE")
+    premium = long_leg["ltp"] - short_leg["ltp"]
+    if premium <= 0:
+        return signals
+    legs = [
+        {"symbol": _option_symbol(long_row["strike"], "CE", ctx["expiry"]), "side": "buy",
+         "strike": int(long_row["strike"]), "ltp": long_leg["ltp"], "qty": lot_size,
+         "iv": long_leg["iv"], "oi": long_leg["oi"], "volume": long_leg["volume"]},
+        {"symbol": _option_symbol(short_row["strike"], "CE", ctx["expiry"]), "side": "sell",
+         "strike": int(short_row["strike"]), "ltp": short_leg["ltp"], "qty": lot_size,
+         "iv": short_leg["iv"], "oi": short_leg["oi"], "volume": short_leg["volume"]},
+    ]
+    signal = _build_option_signal(
+        state, ctx, strategy, cfg, legs, premium, False,
+        long_row["strike"], ctx["expiry"], "LONG",
+        f"Buy {int(long_row['strike'])} CE / sell {int(short_row['strike'])} CE",
+    )
+    return _record_option_signal(state, strategy, signal)
+
+def check_bull_put_spread(state, ctx):
+    """Buy an OTM PT, sell a deeper OTM PT. Bullish regime only."""
+    signals = []
+    strategy = "bull_put_spread"
+    if not _option_signal_enabled(state, strategy):
+        return signals
+    cfg = _option_config().get(strategy, {})
+    if ctx["regime"] != "bullish":
+        return signals
+    if ctx["iv_rank"] < 25:
+        return signals
+    if not ctx["rows"] or not ctx["spot"] or not ctx["expiry"]:
+        return signals
+
+    lot_size = int(_options_config().get("lot_size", 25) or 25)
+    otm = float(cfg.get("otm_points", 200) or 200)
+    width = float(cfg.get("leg_width", 500) or 500)
+    atm = _chain_atm_strike(ctx["rows"], ctx["spot"])
+    if atm is None:
+        return signals
+    long_row = _chain_row_at(ctx["rows"], atm - otm)
+    short_row = _chain_row_at(ctx["rows"], atm - otm - width)
+    if not long_row or not short_row:
+        return signals
+    long_leg = _leg_values(long_row, "PE")
+    short_leg = _leg_values(short_row, "PE")
+    premium = long_leg["ltp"] - short_leg["ltp"]
+    if premium <= 0:
+        return signals
+    legs = [
+        {"symbol": _option_symbol(long_row["strike"], "PE", ctx["expiry"]), "side": "buy",
+         "strike": int(long_row["strike"]), "ltp": long_leg["ltp"], "qty": lot_size,
+         "iv": long_leg["iv"], "oi": long_leg["oi"], "volume": long_leg["volume"]},
+        {"symbol": _option_symbol(short_row["strike"], "PE", ctx["expiry"]), "side": "sell",
+         "strike": int(short_row["strike"]), "ltp": short_leg["ltp"], "qty": lot_size,
+         "iv": short_leg["iv"], "oi": short_leg["oi"], "volume": short_leg["volume"]},
+    ]
+    signal = _build_option_signal(
+        state, ctx, strategy, cfg, legs, premium, False,
+        long_row["strike"], ctx["expiry"], "LONG",
+        f"Buy {int(long_row['strike'])} PE / sell {int(short_row['strike'])} PE",
+    )
+    return _record_option_signal(state, strategy, signal)
+
+def check_iron_condor(state, ctx):
+    """Sell OTM CE + PT, buy further OTM wings. Needs rich IV and a quiet tape."""
+    signals = []
+    strategy = "iron_condor"
+    if not _option_signal_enabled(state, strategy):
+        return signals
+    cfg = _option_config().get(strategy, {})
+    if ctx["iv_rank"] < 50:
+        return signals
+    if ctx["range_15m"] >= 60:
+        return signals
+    if not ctx["rows"] or not ctx["spot"] or not ctx["expiry"]:
+        return signals
+
+    lot_size = int(_options_config().get("lot_size", 25) or 25)
+    otm = float(cfg.get("otm_points", 400) or 400)
+    wing = float(cfg.get("wing_width", 200) or 200)
+    atm = _chain_atm_strike(ctx["rows"], ctx["spot"])
+    if atm is None:
+        return signals
+    short_ce = _chain_row_at(ctx["rows"], atm + otm)
+    long_ce = _chain_row_at(ctx["rows"], atm + otm + wing)
+    short_pt = _chain_row_at(ctx["rows"], atm - otm)
+    long_pt = _chain_row_at(ctx["rows"], atm - otm - wing)
+    if not all((short_ce, long_ce, short_pt, long_pt)):
+        return signals
+    sc = _leg_values(short_ce, "CE")
+    lc = _leg_values(long_ce, "CE")
+    sp = _leg_values(short_pt, "PE")
+    lp = _leg_values(long_pt, "PE")
+    credit = sc["ltp"] + sp["ltp"] - lc["ltp"] - lp["ltp"]
+    if credit <= 0:
+        return signals
+    legs = [
+        {"symbol": _option_symbol(short_ce["strike"], "CE", ctx["expiry"]), "side": "sell",
+         "strike": int(short_ce["strike"]), "ltp": sc["ltp"], "qty": lot_size,
+         "iv": sc["iv"], "oi": sc["oi"], "volume": sc["volume"]},
+        {"symbol": _option_symbol(long_ce["strike"], "CE", ctx["expiry"]), "side": "buy",
+         "strike": int(long_ce["strike"]), "ltp": lc["ltp"], "qty": lot_size,
+         "iv": lc["iv"], "oi": lc["oi"], "volume": lc["volume"]},
+        {"symbol": _option_symbol(short_pt["strike"], "PE", ctx["expiry"]), "side": "sell",
+         "strike": int(short_pt["strike"]), "ltp": sp["ltp"], "qty": lot_size,
+         "iv": sp["iv"], "oi": sp["oi"], "volume": sp["volume"]},
+        {"symbol": _option_symbol(long_pt["strike"], "PE", ctx["expiry"]), "side": "buy",
+         "strike": int(long_pt["strike"]), "ltp": lp["ltp"], "qty": lot_size,
+         "iv": lp["iv"], "oi": lp["oi"], "volume": lp["volume"]},
+    ]
+    signal = _build_option_signal(
+        state, ctx, strategy, cfg, legs, credit, True,
+        short_ce["strike"], ctx["expiry"], "NEUTRAL",
+        f"Sell {int(short_ce['strike'])} CE / {int(short_pt['strike'])} PE, "
+        f"buy {int(long_ce['strike'])} CE / {int(long_pt['strike'])} PE",
+    )
+    return _record_option_signal(state, strategy, signal)
+
+def check_straddle(state, ctx):
+    """Buy ATM CE + ATM PT. Needs a big move (Nifty 15-min range > 60 pts)."""
+    signals = []
+    strategy = "straddle"
+    if not _option_signal_enabled(state, strategy):
+        return signals
+    cfg = _option_config().get(strategy, {})
+    if ctx["range_15m"] <= 60:
+        return signals
+    if ctx["iv_rank"] > 70:
+        return signals
+    if not ctx["rows"] or not ctx["spot"] or not ctx["expiry"]:
+        return signals
+
+    lot_size = int(_options_config().get("lot_size", 25) or 25)
+    atm = _chain_atm_strike(ctx["rows"], ctx["spot"])
+    if atm is None:
+        return signals
+    row = _chain_row_at(ctx["rows"], atm)
+    if not row:
+        return signals
+    ce = _leg_values(row, "CE")
+    pe = _leg_values(row, "PE")
+    premium = ce["ltp"] + pe["ltp"]
+    if premium <= 0:
+        return signals
+    legs = [
+        {"symbol": _option_symbol(atm, "CE", ctx["expiry"]), "side": "buy",
+         "strike": int(atm), "ltp": ce["ltp"], "qty": lot_size,
+         "iv": ce["iv"], "oi": ce["oi"], "volume": ce["volume"]},
+        {"symbol": _option_symbol(atm, "PE", ctx["expiry"]), "side": "buy",
+         "strike": int(atm), "ltp": pe["ltp"], "qty": lot_size,
+         "iv": pe["iv"], "oi": pe["oi"], "volume": pe["volume"]},
+    ]
+    signal = _build_option_signal(
+        state, ctx, strategy, cfg, legs, premium, False,
+        atm, ctx["expiry"], "DIRECTIONAL",
+        f"Buy {int(atm)} CE + {int(atm)} PE (ATM straddle)",
+    )
+    return _record_option_signal(state, strategy, signal)
+
+def check_strangle(state, ctx):
+    """Buy OTM CE + OTM PT. Needs a big move (Nifty 15-min range > 60 pts)."""
+    signals = []
+    strategy = "strangle"
+    if not _option_signal_enabled(state, strategy):
+        return signals
+    cfg = _option_config().get(strategy, {})
+    if ctx["range_15m"] <= 60:
+        return signals
+    if ctx["iv_rank"] > 70:
+        return signals
+    if not ctx["rows"] or not ctx["spot"] or not ctx["expiry"]:
+        return signals
+
+    lot_size = int(_options_config().get("lot_size", 25) or 25)
+    otm = float(cfg.get("otm_points", 300) or 300)
+    atm = _chain_atm_strike(ctx["rows"], ctx["spot"])
+    if atm is None:
+        return signals
+    ce_row = _chain_row_at(ctx["rows"], atm + otm)
+    pe_row = _chain_row_at(ctx["rows"], atm - otm)
+    if not ce_row or not pe_row:
+        return signals
+    ce = _leg_values(ce_row, "CE")
+    pe = _leg_values(pe_row, "PE")
+    premium = ce["ltp"] + pe["ltp"]
+    if premium <= 0:
+        return signals
+    legs = [
+        {"symbol": _option_symbol(ce_row["strike"], "CE", ctx["expiry"]), "side": "buy",
+         "strike": int(ce_row["strike"]), "ltp": ce["ltp"], "qty": lot_size,
+         "iv": ce["iv"], "oi": ce["oi"], "volume": ce["volume"]},
+        {"symbol": _option_symbol(pe_row["strike"], "PE", ctx["expiry"]), "side": "buy",
+         "strike": int(pe_row["strike"]), "ltp": pe["ltp"], "qty": lot_size,
+         "iv": pe["iv"], "oi": pe["oi"], "volume": pe["volume"]},
+    ]
+    signal = _build_option_signal(
+        state, ctx, strategy, cfg, legs, premium, False,
+        ce_row["strike"], ctx["expiry"], "DIRECTIONAL",
+        f"Buy {int(ce_row['strike'])} CE + {int(pe_row['strike'])} PE",
+    )
+    return _record_option_signal(state, strategy, signal)
 
 DEBUG_MODE = True  # development: always on; switch to False / env-based when production
 
@@ -550,6 +1221,10 @@ def normalize_signal(sig):
         out["type"] = "short"
     elif "LONG" in raw_type:
         out["type"] = "long"
+    elif "DIRECTIONAL" in raw_type or "NEUTRAL" in raw_type:
+        # Option strategies keep their direction label; keep as-is for
+        # frontend display (mapping handled by render layer).
+        out["type"] = str(out.get("type") or out.get("signal_type") or "").lower()
     else:
         out["type"] = "short"
 
@@ -766,6 +1441,23 @@ def run_strategy_checks(state):
     all_signals.extend(check_short_breakdown_20d(state))
     all_signals.extend(check_long_bb_reclaim(state))
     all_signals.extend(check_orb(state))
+    ctx = None
+    try:
+        ctx = _option_context(state)
+    except Exception as e:
+        logger.info(f"Option strategy context unavailable: {e}")
+    if ctx is not None:
+        if not ctx["allowed"] and ctx["reason"]:
+            logger.info(f"Option strategies skipped: {ctx['reason']}")
+        else:
+            try:
+                all_signals.extend(check_bull_call_spread(state, ctx))
+                all_signals.extend(check_bull_put_spread(state, ctx))
+                all_signals.extend(check_iron_condor(state, ctx))
+                all_signals.extend(check_straddle(state, ctx))
+                all_signals.extend(check_strangle(state, ctx))
+            except Exception as e:
+                logger.info(f"Option strategy checks skipped (missing data): {e}")
     return all_signals
 
 # ── Collector thread ─────────────────────────────────────────────────────

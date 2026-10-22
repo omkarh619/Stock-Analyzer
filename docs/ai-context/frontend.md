@@ -16,9 +16,9 @@ The UI is organized into three sections rendered by JS functions inside `dashboa
 
 ## Routing / State
 
-- **No client-side routing**: single-page, all content from `/api/status` polled every 2 seconds.
+- **No client-side routing**: single-page, all content from `/api/status` polled every 5 seconds.
 - **State source**: a single JS module-level object updated from the API response. No state management library.
-- **Polling**: `setInterval` → GET `/api/status`, then re-renders affected cards. No WebSockets.
+- **Polling**: `setInterval(refresh, 5000)` → GET `/api/status`, then re-renders affected cards. No WebSockets.
 
 ## Data Fetching
 
@@ -38,6 +38,13 @@ The UI is organized into three sections rendered by JS functions inside `dashboa
 - **Cache-control**: `dashboard.html` sends `Cache-Control: no-cache` header so browser always fetches fresh HTML.
 - **Price history**: each stock card shows a sparkline rendered as inline SVG from the `/api/chart_data` response.
 - **Signal cards**: active signals appear with entry/SL/target prices, estimated quantity, and charge breakdown — sourced from the `active_signals` array in `/api/status`.
+- **Live Signals table** (`renderSignals`): reads `s.active_signals || []`; dedupes by `sig.id || (sig.strategy + '_' + sig.symbol)`; updates the `#signalCountBadge` count; renders an empty state ("No active signals") when the list is empty. Expected fields include: `symbol`, `entry`, `sl`, `target`, `timestamp`, `type` (`"long"`/`"short"`/`"directional"`/`"neutral"`), `strategy`, `priority_score`, `strike`, `expiry`, `legs`, `status`, `iv_rank`, `valid_until`, `max_loss_amount`, `risk_exceeded`.
+- **Option signal cards**: 5 new option strategies (`bull_call_spread`, `bull_put_spread`, `iron_condor`, `straddle`, `strangle`) appear alongside the 3 equity strategies, for 8 cards total. Each card shows direction label (`LONG`/`DIRECTIONAL`/`NEUTRAL` for options, `long`/`short` for equity), last signal time, signal count, and toggle button.
+- **Direction styling**: `directionClass(dir)` maps `"LONG"` → `long`, `"SHORT"` → `short`, `"DIRECTIONAL"` / `"NEUTRAL"` → `both` (neutral style). Signal tags render as `String(sig.type || sig.direction || '').toUpperCase()`. Option direction labels pass through unchanged.
+- **Chart modal**: clicking a signal row calls `openChart(symbol, strategy, signalJson)` → `drawChart` → `chart_data_for(symbol, price_history, signal)`, which reads `signal.get("entry"/"sl"/"target"/"type")` and returns `{"stock", "data", "lines": {entry/sl/target}, "signal_type"}`.
+- **P&L**: `getCurrentPnl(sig)` treats `signal.type === 'long'` as long, otherwise short.
+- **Strategy cards**: one per strategy in `STRATEGY_DEFS` (8 total), with toggle + signal count + last-signal time.
+- **Option signal rendering**: option signals carry a `symbol` of the form `NIFTY-2026-10-27-24200` plus a `legs` array. The signal row shows the strategy's direction label, strike/expiry, priority score, and the leg summary from `description`. `status` values map to the active/expired/squared indicator; `risk_exceeded: true` marks a trade whose minimum size already busts the risk budget.
 
 ## Testing
 
@@ -45,7 +52,7 @@ The UI is organized into three sections rendered by JS functions inside `dashboa
 - `renderStrategyCards` / `renderInstrumentCards` functions exist and are called.
 - `strategyCards` / `instrumentCards` containers exist.
 - `drawChart` / `renderSvgChart` functions exist.
-- Strategy card count ≥ 3 (matches `STRATEGY_DEFS`).
+- Strategy card count ≥ 8 (matches `STRATEGY_DEFS`).
 - `niftyDelayBadge` element exists (for yfinance fallback indicator).
 - `/api/status` returns expected fields (price, source, symbols, strategies, active_signals).
 

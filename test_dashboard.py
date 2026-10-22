@@ -39,14 +39,14 @@ def run():
     section("1. MODULE LOAD & BASIC IMPORTS")
     t("dashboard module imports cleanly", lambda: (True, ""))
     t("SharedState class exists", lambda: (hasattr(dashboard, "SharedState"), ""))
-    t("STRATEGY_DEFS exists with 3 strategies", lambda: (len(dashboard.STRATEGY_DEFS) == 3, f"got {len(dashboard.STRATEGY_DEFS)}"))
+    t("STRATEGY_DEFS exists with 8 strategies", lambda: (len(dashboard.STRATEGY_DEFS) == 8, f"got {len(dashboard.STRATEGY_DEFS)}"))
     t("STATE singleton exists", lambda: (hasattr(dashboard, "STATE"), ""))
 
     section("2. CONFIG LOADING")
     t("STATE.symbols is non-empty list", lambda: (len(dashboard.STATE.symbols) > 0, f"got {len(dashboard.STATE.symbols)} symbols"))
     t("STATE.symbols are uppercase strings", lambda: (all(isinstance(s, str) and s == s.upper() for s in dashboard.STATE.symbols), ""))
     t("STATE.nifty_symbol is set", lambda: (bool(dashboard.STATE.nifty_symbol), f"got {dashboard.STATE.nifty_symbol}"))
-    t("All 3 strategy states initialized", lambda: (len(dashboard.STATE.strategy_states) == 3, f"got {len(dashboard.STATE.strategy_states)}"))
+    t("All 8 strategy states initialized", lambda: (len(dashboard.STATE.strategy_states) == 8, f"got {len(dashboard.STATE.strategy_states)}"))
     t("Each strategy state has required fields", lambda: (
         all(all(k in st for k in ["enabled", "signal_count", "last_signal", "filters"]) for st in dashboard.STATE.strategy_states.values()),
         ""))
@@ -151,6 +151,74 @@ def run():
     t("charges total < 2% of position value", lambda: (all(
         s["charges"]["total"] < s["entry"] * s["qty_est"] * 0.02 for s in signals
     ), f"charges: {[(s['charges']['total'], s['entry']*s['qty_est']) for s in signals]}"))
+
+    section("5b. OPTION STRATEGIES (synthetic chain)")
+    opt = dashboard.SharedState()
+    opt.nifty_price = 24000.0
+    opt.nifty_sma20 = 23500.0
+    chain_rows = []
+    for i, strike in enumerate(range(23000, 25001, 50)):
+        dist = abs(strike - 24000)
+        ltp = round(max(1.0, 200 - dist / 6.0), 2)
+        chain_rows.append({
+            "strikePrice": strike,
+            "CE": {"lastPrice": ltp, "impliedVolatility": 12 + dist / 100.0,
+                   "openInterest": 1000 + i, "totalTradedVolume": 500 + i},
+            "PE": {"lastPrice": ltp, "impliedVolatility": 12 + dist / 100.0,
+                   "openInterest": 900 + i, "totalTradedVolume": 400 + i},
+        })
+    chain = {"records": {"underlyingValue": 24000.0, "data": chain_rows}}
+    dashboard._option_chain_cache.update({"ts": datetime.now(), "data": chain, "expiry": "27-Oct-2026"})
+    orig_fetch, orig_iv, orig_range = dashboard.fetch_option_chain, dashboard._iv_rank, dashboard.nifty_range_15m
+    dashboard.fetch_option_chain = lambda symbol="NIFTY", expiry_date=None, force=False: chain
+    dashboard._iv_rank = lambda: 60.0
+    dashboard.nifty_range_15m = lambda state=None: 80.0
+    opt_ctx = dashboard._option_context(opt)
+    opt_sigs = []
+    for fn in (dashboard.check_bull_call_spread, dashboard.check_bull_put_spread,
+               dashboard.check_straddle, dashboard.check_strangle):
+        opt_sigs.extend(fn(opt, opt_ctx))
+
+    t("Option context resolves spot/expiry/regime", lambda: (
+        opt_ctx["spot"] == 24000.0 and opt_ctx["expiry"] == "27-Oct-2026" and opt_ctx["regime"] == "bullish",
+        f"spot={opt_ctx['spot']} expiry={opt_ctx['expiry']} regime={opt_ctx['regime']}"))
+    t("Option strategies produce signals", lambda: (len(opt_sigs) == 4, f"got {len(opt_sigs)}"))
+    t("Option signals have option fields", lambda: (
+        all(all(k in s for k in ["strategy", "symbol", "entry", "sl", "target", "strike",
+                                 "expiry", "legs", "priority_score", "iv_rank", "signal_time",
+                                 "status", "market_regime"]) for s in opt_sigs),
+        f"first keys: {list(opt_sigs[0].keys()) if opt_sigs else 'N/A'}"))
+    t("Option signal legs have symbol/side/strike/ltp/qty", lambda: (
+        all(all(k in leg for k in ["symbol", "side", "strike", "ltp", "qty"])
+            for s in opt_sigs for leg in s["legs"]),
+        f"first legs: {opt_sigs[0]['legs'] if opt_sigs else 'N/A'}"))
+    t("Option signal priority_score is a number > 0", lambda: (
+        all(isinstance(s["priority_score"], (int, float)) and s["priority_score"] > 0 for s in opt_sigs),
+        f"scores: {[s['priority_score'] for s in opt_sigs]}"))
+    t("Option signal charges total is a number >= 0", lambda: (
+        all(isinstance(s["charges"]["total"], (int, float)) and s["charges"]["total"] >= 0 for s in opt_sigs),
+        f"charges: {[s['charges']['total'] for s in opt_sigs]}"))
+    t("Option signal qty_est is a positive int", lambda: (
+        all(isinstance(s["qty_est"], int) and s["qty_est"] > 0 for s in opt_sigs),
+        f"qty: {[s['qty_est'] for s in opt_sigs]}"))
+    t("Debit spread: SL < entry < target", lambda: (
+        all(s["sl"] < s["entry"] < s["target"] for s in opt_sigs if s["strategy"] != "iron_condor"),
+        f"vals: {[(s['strategy'], s['entry'], s['sl'], s['target']) for s in opt_sigs]}"))
+
+    # Iron condor needs a quiet tape (15-min range < 60) and rich IV
+    dashboard.nifty_range_15m = lambda state=None: 20.0
+    quiet_ctx = dashboard._option_context(opt)
+    condor_sigs = dashboard.check_iron_condor(opt, quiet_ctx)
+    t("Iron condor fires when 15-min range < 60", lambda: (len(condor_sigs) == 1, f"got {len(condor_sigs)}"))
+    t("Iron condor: 4 legs and credit SL > entry > target", lambda: (
+        condor_sigs and len(condor_sigs[0]["legs"]) == 4
+        and condor_sigs[0]["sl"] > condor_sigs[0]["entry"] > condor_sigs[0]["target"],
+        f"condor: {[(x['entry'], x['sl'], x['target']) for x in condor_sigs]}"))
+    dashboard.nifty_range_15m = lambda state=None: 80.0
+    busy_ctx = dashboard._option_context(opt)
+    t("Iron condor skipped when 15-min range >= 60", lambda: (
+        len(dashboard.check_iron_condor(opt, busy_ctx)) == 0, ""))
+    dashboard.fetch_option_chain, dashboard._iv_rank, dashboard.nifty_range_15m = orig_fetch, orig_iv, orig_range
 
     section("6. CHART DATA")
     if signals:
